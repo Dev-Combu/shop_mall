@@ -5,7 +5,7 @@ import 'package:shopmall/views/category.dart';
 import 'package:shopmall/views/home.dart';
 import 'package:shopmall/views/my_page.dart';
 import 'package:shopmall/views/product.dart';
-import 'package:shopmall/views/scaffold_shell_layout.dart';
+import 'package:shopmall/views/share/scaffold_shell_layout.dart';
 import 'package:shopmall/views/search.dart';
 
 /// 앱 전체 라우터 설정
