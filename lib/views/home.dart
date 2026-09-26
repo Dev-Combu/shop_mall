@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shopmall/models/product.dart';
+import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
 
 class Home extends ConsumerStatefulWidget {
@@ -48,68 +51,12 @@ class _HomeState extends ConsumerState<Home> {
   ];
 
   // 신상품 데이터
-  final List<_ProductItem> _newProducts = [
-    _ProductItem(
-      name: '친환경 롤매트 2m',
-      price: '35,000원',
-      tag: 'NEW',
-      tagColor: Color(0xFF4CAF50),
-      icon: Icons.view_column,
-    ),
-    _ProductItem(
-      name: '디자인 현관 매트',
-      price: '21,900원',
-      tag: 'NEW',
-      tagColor: Color(0xFF4CAF50),
-      icon: Icons.door_front_door,
-    ),
-    _ProductItem(
-      name: '인조잔디 롤 50cm',
-      price: '18,500원',
-      tag: 'NEW',
-      tagColor: Color(0xFF4CAF50),
-      icon: Icons.grass,
-    ),
-    _ProductItem(
-      name: '대걸레 청소세트',
-      price: '12,000원',
-      tag: 'NEW',
-      tagColor: Color(0xFF4CAF50),
-      icon: Icons.cleaning_services,
-    ),
-  ];
+  final List<Product> _newProducts = ProductDataService.newProducts;
 
   // 베스트상품 데이터
-  final List<_ProductItem> _bestProducts = [
-    _ProductItem(
-      name: '프리미엄 롤매트',
-      price: '45,000원',
-      tag: 'BEST',
-      tagColor: Color(0xFFE53935),
-      icon: Icons.view_column,
-    ),
-    _ProductItem(
-      name: '현관 항균 매트',
-      price: '19,800원',
-      tag: 'BEST',
-      tagColor: Color(0xFFE53935),
-      icon: Icons.door_front_door,
-    ),
-    _ProductItem(
-      name: '인조잔디 타일',
-      price: '8,900원',
-      tag: 'BEST',
-      tagColor: Color(0xFFE53935),
-      icon: Icons.grass,
-    ),
-    _ProductItem(
-      name: '극세사 이불세트',
-      price: '55,000원',
-      tag: 'BEST',
-      tagColor: Color(0xFFE53935),
-      icon: Icons.king_bed,
-    ),
-  ];
+  final List<Product> _bestProducts = ProductDataService.bestProducts;
+
+
 
   @override
   void dispose() {
@@ -365,7 +312,7 @@ class _HomeState extends ConsumerState<Home> {
   }
 
   // ─── 상품 그리드 ───
-  Widget _buildProductGrid(List<_ProductItem> products) {
+  Widget _buildProductGrid(List<Product> products) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: GridView.builder(
@@ -423,13 +370,13 @@ class _HomeState extends ConsumerState<Home> {
 
 // ─── 상품 카드 위젯 ───
 class _ProductCard extends StatelessWidget {
-  final _ProductItem product;
+  final Product product;
   const _ProductCard({required this.product});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {},
+      onTap: () => context.push('/products/${product.id}'),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -468,6 +415,23 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // 할인율 뱃지
+                  if (product.discountRate > 0)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE53935),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '-${product.discountRate}%',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -484,8 +448,19 @@ class _ProductCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
+                  if (product.discountRate > 0) ...[
+                    Text(
+                      product.formattedOriginalPrice,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF9E9E9E),
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                  ],
                   Text(
-                    product.price,
+                    product.formattedSalePrice,
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF212121)),
                   ),
                 ],
@@ -511,13 +486,4 @@ class _CategoryItem {
   final String label;
   final IconData icon;
   _CategoryItem({required this.label, required this.icon});
-}
-
-class _ProductItem {
-  final String name;
-  final String price;
-  final String tag;
-  final Color tagColor;
-  final IconData icon;
-  _ProductItem({required this.name, required this.price, required this.tag, required this.tagColor, required this.icon});
 }
