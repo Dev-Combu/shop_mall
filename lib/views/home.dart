@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
@@ -21,19 +22,19 @@ class _HomeState extends ConsumerState<Home> {
     _BannerItem(
       title: '자연과 함께하는\n편안한 매트',
       subtitle: '롤매트 / 인조잔디 전문몰',
-      color: const Color(0xFF388E3C),
+      color: AppTheme.primary,
       icon: Icons.grass,
     ),
     _BannerItem(
       title: '현관을 더 깔끔하게\n현관발매트',
       subtitle: '다양한 디자인 매트 모음',
-      color: const Color(0xFF1976D2),
+      color: const Color(0xFF0F172A),
       icon: Icons.door_front_door,
     ),
     _BannerItem(
       title: '생활을 편리하게\n청소용품',
       subtitle: '합리적인 가격의 청소용품',
-      color: const Color(0xFFF57C00),
+      color: const Color(0xFF334155),
       icon: Icons.cleaning_services,
     ),
   ];
@@ -50,13 +51,8 @@ class _HomeState extends ConsumerState<Home> {
     _CategoryItem(label: '할인특가', icon: Icons.local_offer),
   ];
 
-  // 신상품 데이터
   final List<Product> _newProducts = ProductDataService.newProducts;
-
-  // 베스트상품 데이터
   final List<Product> _bestProducts = ProductDataService.bestProducts;
-
-
 
   @override
   void dispose() {
@@ -68,30 +64,29 @@ class _HomeState extends ConsumerState<Home> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      // ───────────── AppBar ─────────────
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 1,
-        title:  Text(
+        title: const Text(
           '수지씨앤엘',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
+            color: AppTheme.primary,
             letterSpacing: -0.5,
           ),
         ),
         actions: [
           IconButton(
-            icon:  Icon(Icons.search, color: Theme.of(context).primaryColor),
-            onPressed: () {},
+            icon: const Icon(Icons.search, color: AppTheme.primary),
+            onPressed: () => context.push('/search'),
           ),
           Stack(
             alignment: Alignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.shopping_cart_outlined, color: Color(0xFF212121)),
+                icon: const Icon(Icons.shopping_cart_outlined, color: AppTheme.primary),
                 onPressed: () => ref
                     .read(bottomNavProvider.notifier)
                     .setIndex(BottomNavIndex.cart),
@@ -103,7 +98,7 @@ class _HomeState extends ConsumerState<Home> {
                   width: 16,
                   height: 16,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF4CAF50),
+                    color: AppTheme.point,
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
@@ -119,33 +114,22 @@ class _HomeState extends ConsumerState<Home> {
           const SizedBox(width: 4),
         ],
       ),
-
-      // ───────────── Body ─────────────
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 배너 슬라이더
             _buildBannerSlider(),
             const SizedBox(height: 24),
-
-            // 카테고리
             _buildCategoryRow(),
             const SizedBox(height: 28),
-
-            // 신상품 섹션
             _buildSectionTitle('신상품', '더보기'),
             const SizedBox(height: 12),
             _buildProductGrid(_newProducts),
             const SizedBox(height: 28),
-
-            // 베스트상품 섹션
             _buildSectionTitle('베스트 상품', '더보기'),
             const SizedBox(height: 12),
             _buildProductGrid(_bestProducts),
             const SizedBox(height: 28),
-
-            // 공지사항 배너
             _buildNoticeBanner(),
             const SizedBox(height: 28),
           ],
@@ -154,7 +138,6 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  // ─── 배너 슬라이더 ───
   Widget _buildBannerSlider() {
     return SizedBox(
       height: 200,
@@ -214,14 +197,13 @@ class _HomeState extends ConsumerState<Home> {
                           ],
                         ),
                       ),
-                      Icon(banner.icon, size: 80, color: Colors.white.withValues(alpha: 0.3)),
+                      Icon(banner.icon, size: 80, color: Colors.white.withValues(alpha: 0.25)),
                     ],
                   ),
                 ),
               );
             },
           ),
-          // 페이지 인디케이터
           Positioned(
             bottom: 12,
             left: 0,
@@ -248,7 +230,6 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  // ─── 카테고리 가로 스크롤 ───
   Widget _buildCategoryRow() {
     return SizedBox(
       height: 88,
@@ -260,23 +241,25 @@ class _HomeState extends ConsumerState<Home> {
         itemBuilder: (context, index) {
           final cat = _categories[index];
           return GestureDetector(
-            onTap: () {},
+            onTap: () {
+              ref.read(bottomNavProvider.notifier).setIndex(BottomNavIndex.category);
+            },
             child: Column(
               children: [
                 Container(
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F8E9),
+                    color: AppTheme.chipBackground,
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFDCEDC8), width: 1),
+                    border: Border.all(color: AppTheme.border, width: 1),
                   ),
-                  child: Icon(cat.icon, color: const Color(0xFF388E3C), size: 26),
+                  child: Icon(cat.icon, color: AppTheme.primary, size: 26),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   cat.label,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF424242), fontWeight: FontWeight.w500),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -286,7 +269,6 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  // ─── 섹션 타이틀 ───
   Widget _buildSectionTitle(String title, String action) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -295,14 +277,14 @@ class _HomeState extends ConsumerState<Home> {
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF212121)),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primary),
           ),
           GestureDetector(
             onTap: () {},
             child: Row(
               children: const [
-                Text('더보기', style: TextStyle(fontSize: 13, color: Color(0xFF9E9E9E))),
-                Icon(Icons.chevron_right, size: 18, color: Color(0xFF9E9E9E)),
+                Text('더보기', style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+                Icon(Icons.chevron_right, size: 18, color: Color(0xFF94A3B8)),
               ],
             ),
           ),
@@ -311,7 +293,6 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  // ─── 상품 그리드 ───
   Widget _buildProductGrid(List<Product> products) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -333,22 +314,21 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  // ─── 공지사항 배너 ───
   Widget _buildNoticeBanner() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FBE7),
+        color: AppTheme.infoLight,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFDCEDC8)),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFF4CAF50),
+              color: AppTheme.info,
               borderRadius: BorderRadius.circular(4),
             ),
             child: const Text('공지', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
@@ -357,18 +337,17 @@ class _HomeState extends ConsumerState<Home> {
           const Expanded(
             child: Text(
               '평일 09:00~17:00 고객센터 운영 | 031-528-3266',
-              style: TextStyle(fontSize: 13, color: Color(0xFF424242)),
+              style: TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9E9E9E)),
+          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF94A3B8)),
         ],
       ),
     );
   }
 }
 
-// ─── 상품 카드 위젯 ───
 class _ProductCard extends StatelessWidget {
   final Product product;
   const _ProductCard({required this.product});
@@ -382,13 +361,12 @@ class _ProductCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 8, offset: const Offset(0, 2)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 상품 이미지 영역 (플레이스홀더)
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: Stack(
@@ -396,17 +374,18 @@ class _ProductCard extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     height: 130,
-                    color: const Color(0xFFF5F5F5),
-                    child: Icon(product.icon, size: 60, color: const Color(0xFFBDBDBD)),
+                    color: const Color(0xFFF8FAFC),
+                    child: Icon(product.icon, size: 60, color: const Color(0xFFCBD5E1)),
                   ),
-                  // 태그
                   Positioned(
                     top: 8,
                     left: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                       decoration: BoxDecoration(
-                        color: product.tagColor,
+                        color: product.tag == 'NEW'
+                            ? AppTheme.primary
+                            : (product.tagColor == const Color(0xFF4CAF50) ? AppTheme.primary : product.tagColor),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -415,7 +394,6 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 할인율 뱃지
                   if (product.discountRate > 0)
                     Positioned(
                       top: 8,
@@ -423,7 +401,7 @@ class _ProductCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE53935),
+                          color: AppTheme.point,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -435,7 +413,6 @@ class _ProductCard extends StatelessWidget {
                 ],
               ),
             ),
-            // 상품 정보
             Padding(
               padding: const EdgeInsets.all(10),
               child: Column(
@@ -443,7 +420,7 @@ class _ProductCard extends StatelessWidget {
                 children: [
                   Text(
                     product.name,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF212121), height: 1.3),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B), height: 1.3),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -453,7 +430,7 @@ class _ProductCard extends StatelessWidget {
                       product.formattedOriginalPrice,
                       style: const TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF9E9E9E),
+                        color: Color(0xFF94A3B8),
                         decoration: TextDecoration.lineThrough,
                       ),
                     ),
@@ -461,7 +438,7 @@ class _ProductCard extends StatelessWidget {
                   ],
                   Text(
                     product.formattedSalePrice,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF212121)),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
                 ],
               ),
@@ -473,7 +450,6 @@ class _ProductCard extends StatelessWidget {
   }
 }
 
-// ─── 데이터 모델 ───
 class _BannerItem {
   final String title;
   final String subtitle;
