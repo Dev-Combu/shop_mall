@@ -613,3 +613,4 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 extension _BindContext on void Function(BuildContext) {
   VoidCallback bind(BuildContext context) => () => this(context);
 }
+
