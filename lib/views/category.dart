@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
+import 'package:shopmall/models/category.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/category_viewmodel.dart';
+import 'package:shopmall/viewmodels/home_products_viewmodel.dart';
 
 class CategoryPage extends ConsumerStatefulWidget {
   const CategoryPage({super.key});
@@ -15,8 +18,32 @@ class CategoryPage extends ConsumerStatefulWidget {
 
 class _CategoryPageState extends ConsumerState<CategoryPage> {
   int _selectedIndex = 0;
+  String? _selectedSubCategoryName;
 
-  final List<_MainCategoryData> _mainCategories = [
+  Color _getCategoryColor(String name) {
+    if (name.contains('전체보기')) return AppTheme.primary;
+    if (name.contains('롤매트')) return const Color(0xFF0F172A);
+    if (name.contains('현관') || name.contains('발매트')) return const Color(0xFF312E81);
+    if (name.contains('잔디')) return const Color(0xFF14532D);
+    if (name.contains('청소')) return const Color(0xFF0E7490);
+    if (name.contains('주방') || name.contains('생활')) return const Color(0xFF78350F);
+    if (name.contains('침구') || name.contains('이불')) return const Color(0xFF581C87);
+    if (name.contains('특가') || name.contains('할인')) return AppTheme.point;
+    return const Color(0xFF1E293B);
+  }
+
+  String _getCategoryBannerSubtitle(String name) {
+    if (name.contains('전체보기')) return '수지씨앤엘 전상품을 한눈에 둘러보세요';
+    if (name.contains('롤매트')) return '원하는 길이만큼 맞춰 시공하는 프리미엄 롤매트';
+    if (name.contains('현관') || name.contains('발매트')) return '먼지 흡수와 미끄럼 방지 완벽 지원';
+    if (name.contains('잔디')) return '베란다·테라스 감성 인테리어 완성';
+    if (name.contains('청소')) return '손쉬운 탈착과 우수한 세척력의 클리닝 라인';
+    if (name.contains('주방') || name.contains('생활')) return '편리하고 깔끔한 라이프스타일 필수품';
+    if (name.contains('침구') || name.contains('이불')) return '부드러운 감촉의 프리미엄 극세사 & 사계절 침구';
+    return '수지씨앤엘 공식 보증 정품 라인업';
+  }
+
+  final List<_MainCategoryData> _fallbackCategories = [
     _MainCategoryData(
       id: 'cat_all',
       name: '전체보기',
@@ -31,7 +58,6 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
         _SubCategoryData(name: '청소용품', icon: Icons.cleaning_services, count: 32),
         _SubCategoryData(name: '생활주방', icon: Icons.kitchen, count: 29),
         _SubCategoryData(name: '침구', icon: Icons.king_bed, count: 12),
-        _SubCategoryData(name: '할인특가', icon: Icons.local_offer, count: 9),
       ],
       tags: ['#전상품무료배송', '#신상품', '#베스트', '#특가할인'],
     ),
@@ -46,104 +72,63 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
         _SubCategoryData(name: 'DIY 롤매트', icon: Icons.cut, count: 12),
         _SubCategoryData(name: '거실용 롤매트', icon: Icons.tv, count: 8),
         _SubCategoryData(name: '복도/주방 매트', icon: Icons.straighten, count: 6),
-        _SubCategoryData(name: '유아/애견 매트', icon: Icons.pets, count: 10),
-        _SubCategoryData(name: '퍼즐/조립 매트', icon: Icons.extension, count: 5),
       ],
       tags: ['#층간소음완화', '#방수코팅', '#친환경EVA', '#도톰한15mm'],
     ),
-    _MainCategoryData(
-      id: 'cat_door',
-      name: '현관발매트',
-      icon: Icons.door_front_door_rounded,
-      bannerTitle: '깔끔한 첫인상\n디자인 발매트',
-      bannerSub: '먼지 흡수 및 미끄럼 방지 완벽 지원',
-      bannerColor: const Color(0xFF334155),
-      subCategories: [
-        _SubCategoryData(name: '극세사 발매트', icon: Icons.dry_cleaning, count: 9),
-        _SubCategoryData(name: '규조토 매트', icon: Icons.water_drop, count: 6),
-        _SubCategoryData(name: '코일 먼지 매트', icon: Icons.grain, count: 7),
-        _SubCategoryData(name: '항균 발매트', icon: Icons.clean_hands, count: 4),
-        _SubCategoryData(name: '야외 현관매트', icon: Icons.deck, count: 5),
-      ],
-      tags: ['#초강력수분흡수', '#물세탁가능', '#미끄럼방지', '#모던디자인'],
-    ),
-    _MainCategoryData(
-      id: 'cat_grass',
-      name: '인조잔디',
-      icon: Icons.grass_rounded,
-      bannerTitle: '사계절 푸른\n리얼 인조잔디',
-      bannerSub: '베란다·테라스 감성 인테리어 완성',
-      bannerColor: const Color(0xFF1E293B),
-      subCategories: [
-        _SubCategoryData(name: '롤 인조잔디', icon: Icons.view_headline, count: 8),
-        _SubCategoryData(name: '조립식 잔디타일', icon: Icons.grid_on, count: 5),
-        _SubCategoryData(name: '베란다/옥상 잔디', icon: Icons.balcony, count: 6),
-        _SubCategoryData(name: '조경용 잔디', icon: Icons.park, count: 4),
-      ],
-      tags: ['#UV상쇄코팅', '#배수구멍처리', '#손쉬운셀프시공', '#리얼풀높이'],
-    ),
-    _MainCategoryData(
-      id: 'cat_clean',
-      name: '청소용품',
-      icon: Icons.cleaning_services_rounded,
-      bannerTitle: '청소가 쉬워지는\n스마트 청소 아이템',
-      bannerSub: '손쉬운 탈착과 우수한 세척력',
-      bannerColor: const Color(0xFF475569),
-      subCategories: [
-        _SubCategoryData(name: '대걸레/밀대', icon: Icons.cleaning_services, count: 11),
-        _SubCategoryData(name: '먼지털이/브러시', icon: Icons.brush, count: 8),
-        _SubCategoryData(name: '청소포/수세미', icon: Icons.soap, count: 14),
-        _SubCategoryData(name: '세정제/스프레이', icon: Icons.opacity, count: 9),
-      ],
-      tags: ['#360도회전', '#극세사패드', '#올인원세트', '#가성비갑'],
-    ),
-    _MainCategoryData(
-      id: 'cat_kitchen',
-      name: '생활주방',
-      icon: Icons.kitchen_rounded,
-      bannerTitle: '매일 만드는 기쁨\n주방 인테리어',
-      bannerSub: '편리하고 깔끔한 주방 라이프',
-      bannerColor: const Color(0xFF1E293B),
-      subCategories: [
-        _SubCategoryData(name: '주방 쿠션매트', icon: Icons.space_dashboard, count: 10),
-        _SubCategoryData(name: '수납정리함', icon: Icons.inventory_2, count: 15),
-        _SubCategoryData(name: '식기건조대', icon: Icons.countertops, count: 7),
-      ],
-      tags: ['#방수주방매트', '#설거지양말', '#공간활용수납'],
-    ),
-    _MainCategoryData(
-      id: 'cat_bed',
-      name: '침구',
-      icon: Icons.king_bed_rounded,
-      bannerTitle: '포근한 숙면\n프리미엄 침구',
-      bannerSub: '부드러운 감촉의 극세사 라인업',
-      bannerColor: const Color(0xFF334155),
-      subCategories: [
-        _SubCategoryData(name: '차렵이불 세트', icon: Icons.bed, count: 6),
-        _SubCategoryData(name: '극세사 이불', icon: Icons.single_bed, count: 8),
-        _SubCategoryData(name: '토퍼/패드', icon: Icons.layers, count: 5),
-      ],
-      tags: ['#알러지케어', '#극세사100%', '#사계절용'],
-    ),
-    _MainCategoryData(
-      id: 'cat_sale',
-      name: '할인특가',
-      icon: Icons.local_offer_rounded,
-      bannerTitle: '오늘만 이 가격!\n특가 한정수량',
-      bannerSub: '최대 50% 파격 할인 기획전',
-      bannerColor: AppTheme.point,
-      subCategories: [
-        _SubCategoryData(name: '오늘의 특가', icon: Icons.timer, count: 4),
-        _SubCategoryData(name: '1+1 기획전', icon: Icons.exposure_plus_1, count: 6),
-        _SubCategoryData(name: '창고대출동', icon: Icons.warehouse, count: 8),
-      ],
-      tags: ['#한정수량', '#무료배송', '#파격할인'],
-    ),
   ];
+
+  List<_MainCategoryData> _getMappedCategories(
+    List<ShopCategory>? mainCats,
+    List<ShopCategory>? allCats,
+  ) {
+    if (mainCats == null || mainCats.isEmpty) return _fallbackCategories;
+    final all = allCats ?? mainCats;
+
+    return mainCats.map((c) {
+      List<_SubCategoryData> subs = [];
+
+      if (c.id == 24 || c.name == '전체보기') {
+        subs = all
+            .where((sub) => sub.depth == 2)
+            .map((sub) => _SubCategoryData(name: sub.name, icon: sub.icon, count: 10))
+            .toList();
+      } else {
+        // depth 3 카테고리 매핑 (parent_category_no == c.id)
+        final children = all.where((sub) => sub.parentId == c.id).toList();
+        if (children.isNotEmpty) {
+          subs = children
+              .map((sub) => _SubCategoryData(name: sub.name, icon: sub.icon, count: 8))
+              .toList();
+        } else {
+          subs = [
+            _SubCategoryData(name: '${c.name} 전체', icon: c.icon, count: 12),
+          ];
+        }
+      }
+
+      return _MainCategoryData(
+        id: 'cat_${c.id}',
+        name: c.name,
+        icon: c.icon,
+        bannerTitle: c.name == '전체보기' ? '수지씨앤엘 전상품' : '${c.name} 전문관',
+        bannerSub: _getCategoryBannerSubtitle(c.name),
+        bannerColor: _getCategoryColor(c.name),
+        subCategories: subs,
+        tags: ['#수지씨앤엘', '#정품보증', '#무료배송', '#${c.name}'],
+      );
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final currentCat = _mainCategories[_selectedIndex];
+    final categoriesAsync = ref.watch(categoriesProvider);
+    final allCategoriesAsync = ref.watch(allCategoriesProvider);
+    final mainCategories = _getMappedCategories(
+      categoriesAsync.value,
+      allCategoriesAsync.value,
+    );
+    final activeIndex = _selectedIndex.clamp(0, mainCategories.isEmpty ? 0 : mainCategories.length - 1);
+    final currentCat = mainCategories.isNotEmpty ? mainCategories[activeIndex] : _fallbackCategories[0];
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -203,7 +188,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       ),
       body: Row(
         children: [
-          _buildLeftSidebar(),
+          _buildLeftSidebar(mainCategories),
           Expanded(
             child: _buildRightContent(currentCat),
           ),
@@ -212,20 +197,21 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
     );
   }
 
-  Widget _buildLeftSidebar() {
+  Widget _buildLeftSidebar(List<_MainCategoryData> categories) {
     return Container(
       width: 100,
       color: AppTheme.background,
       child: ListView.builder(
-        itemCount: _mainCategories.length,
+        itemCount: categories.length,
         itemBuilder: (context, index) {
-          final cat = _mainCategories[index];
+          final cat = categories[index];
           final isSelected = index == _selectedIndex;
 
           return GestureDetector(
             onTap: () {
               setState(() {
                 _selectedIndex = index;
+                _selectedSubCategoryName = null; // 대분류 변경 시 서브카테고리 선택 초기화
               });
             },
             child: AnimatedContainer(
@@ -274,13 +260,25 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
   }
 
   Widget _buildRightContent(_MainCategoryData currentCat) {
-    final products = currentCat.name == '전체보기'
-        ? ProductDataService.all.take(4).toList()
-        : ProductDataService.all
-            .where((p) =>
-                p.category == currentCat.name ||
-                (currentCat.name == '할인특가' && p.discountRate > 0))
-            .toList();
+    final productsAsync = ref.watch(homeProductsProvider);
+    final allProducts = productsAsync.value ?? ProductDataService.all;
+
+    // 카테고리 및 선택된 세부카테고리에 맞춰 실시간 필터링
+    List<Product> products = [];
+    if (_selectedSubCategoryName != null) {
+      products = allProducts
+          .where((p) => p.matchesCategory(_selectedSubCategoryName!))
+          .toList();
+    } else if (currentCat.name == '전체보기') {
+      products = allProducts;
+    } else {
+      products = allProducts
+          .where((p) => p.matchesCategory(currentCat.name))
+          .toList();
+    }
+
+    // 일치하는 상품이 부족할 경우 전체 상품 상위 4개를 추천으로 제공
+    final displayProducts = products.isNotEmpty ? products : allProducts.take(4).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -302,22 +300,52 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                   color: AppTheme.primary,
                 ),
               ),
-              const Icon(Icons.chevron_right, size: 18, color: Color(0xFF94A3B8)),
+              if (_selectedSubCategoryName != null)
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedSubCategoryName = null;
+                    });
+                  },
+                  child: const Text(
+                    '선택 해제',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.point,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
           _buildSubCategoryGrid(currentCat.subCategories),
           const SizedBox(height: 24),
-          const Text(
-            '인기 추천 상품',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.primary,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _selectedSubCategoryName != null
+                    ? '$_selectedSubCategoryName 추천 상품'
+                    : '${currentCat.name} 추천 상품',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primary,
+                ),
+              ),
+              Text(
+                '총 ${displayProducts.length}개',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF94A3B8),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          if (products.isEmpty)
+          if (displayProducts.isEmpty)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -327,13 +355,13 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
               ),
               child: const Center(
                 child: Text(
-                  '등록된 대표 상품이 준비 중입니다.',
+                  '등록된 상품이 준비 중입니다.',
                   style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                 ),
               ),
             )
           else
-            _buildCategoryProductList(products),
+            _buildCategoryProductList(displayProducts),
         ],
       ),
     );
@@ -430,15 +458,27 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       ),
       itemBuilder: (context, index) {
         final sub = subCategories[index];
+        final isSubSelected = _selectedSubCategoryName == sub.name;
+
         return GestureDetector(
           onTap: () {
-            context.push('/search');
+            setState(() {
+              if (_selectedSubCategoryName == sub.name) {
+                _selectedSubCategoryName = null;
+              } else {
+                _selectedSubCategoryName = sub.name;
+              }
+            });
           },
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              color: const Color(0xFFFAFAFA),
+              color: isSubSelected ? AppTheme.primary.withValues(alpha: 0.05) : const Color(0xFFFAFAFA),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFF1F5F9)),
+              border: Border.all(
+                color: isSubSelected ? AppTheme.primary : const Color(0xFFF1F5F9),
+                width: isSubSelected ? 1.5 : 1.0,
+              ),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -446,19 +486,23 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                 Container(
                   width: 42,
                   height: 42,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
+                  decoration: BoxDecoration(
+                    color: isSubSelected ? AppTheme.primary : Colors.white,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(sub.icon, color: AppTheme.primary, size: 22),
+                  child: Icon(
+                    sub.icon,
+                    color: isSubSelected ? Colors.white : AppTheme.primary,
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   sub.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primary,
+                    fontWeight: isSubSelected ? FontWeight.bold : FontWeight.w600,
+                    color: isSubSelected ? AppTheme.primary : const Color(0xFF334155),
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 1,
@@ -467,9 +511,10 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                 const SizedBox(height: 2),
                 Text(
                   '${sub.count}개',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
-                    color: Color(0xFF94A3B8),
+                    color: isSubSelected ? AppTheme.primary : const Color(0xFF94A3B8),
+                    fontWeight: isSubSelected ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
               ],
@@ -484,7 +529,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
     return Column(
       children: products.map((product) {
         return GestureDetector(
-          onTap: () => context.push('/products/${product.id}'),
+          onTap: () => context.push('/products/${product.id}', extra: product),
           child: Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(10),
@@ -502,14 +547,21 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 64,
+                    height: 64,
                     color: AppTheme.chipBackground,
-                    borderRadius: BorderRadius.circular(8),
+                    child: (product.imageUrl != null && product.imageUrl!.isNotEmpty)
+                        ? Image.network(
+                            product.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Icon(product.icon, size: 28, color: const Color(0xFF94A3B8)),
+                          )
+                        : Icon(product.icon, size: 28, color: const Color(0xFF94A3B8)),
                   ),
-                  child: Icon(product.icon, size: 30, color: const Color(0xFF94A3B8)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -523,10 +575,10 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primary,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Row(
                         children: [
                           if (product.discountRate > 0) ...[

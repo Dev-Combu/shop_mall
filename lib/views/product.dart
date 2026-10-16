@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/models/product.dart';
+import 'package:shopmall/services/cafe24_api_service.dart';
 import 'package:shopmall/services/product_data.dart';
 
 /// 상품 상세 & 구매 페이지
@@ -9,8 +10,13 @@ import 'package:shopmall/services/product_data.dart';
 /// BottomNavigationBar 없이 전체 화면으로 표시됩니다.
 class ProductPage extends StatefulWidget {
   final String productId;
+  final Product? initialProduct;
 
-  const ProductPage({super.key, required this.productId});
+  const ProductPage({
+    super.key,
+    required this.productId,
+    this.initialProduct,
+  });
 
   @override
   State<ProductPage> createState() => _ProductPageState();
@@ -21,8 +27,9 @@ class _ProductPageState extends State<ProductPage>
   late TabController _tabController;
   int _quantity = 1;
   bool _isFavorite = false;
+  bool _isLoading = false;
 
-  // 상품 데이터 (ID로 조회)
+  // 상품 데이터 (전달받은 데이터 또는 ID로 조회)
   Product? _product;
 
   // 브랜드 색상
@@ -37,7 +44,30 @@ class _ProductPageState extends State<ProductPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _product = ProductDataService.findById(widget.productId);
+    _product = widget.initialProduct ?? ProductDataService.findById(widget.productId);
+    if (_product == null) {
+      _fetchProductDetail();
+    }
+  }
+
+  Future<void> _fetchProductDetail() async {
+    setState(() => _isLoading = true);
+    try {
+      final apiService = Cafe24ApiService();
+      final p = await apiService.fetchProductDetail(widget.productId);
+      if (p != null && mounted) {
+        setState(() {
+          _product = p;
+          _isLoading = false;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('[ProductPage] fetchProductDetail error: $e');
+    }
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -57,6 +87,15 @@ class _ProductPageState extends State<ProductPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('상품 정보')),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     // 상품을 찾을 수 없을 때
     if (_product == null) {
       return Scaffold(
@@ -160,17 +199,42 @@ class _ProductPageState extends State<ProductPage>
 
   // ─── 이미지 영역 ───
   Widget _buildImageSection(Product product) {
+    final hasImage = product.imageUrl != null && product.imageUrl!.trim().isNotEmpty;
+
     return Stack(
       children: [
         Container(
           width: double.infinity,
           height: 300,
           color: _bgGray,
-          child: Icon(
-            product.icon,
-            size: 120,
-            color: const Color(0xFFBDBDBD),
-          ),
+          child: hasImage
+              ? Image.network(
+                  product.imageUrl!,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Center(
+                      child: Icon(product.icon, size: 120, color: const Color(0xFFBDBDBD)),
+                    );
+                  },
+                )
+              : Center(
+                  child: Icon(
+                    product.icon,
+                    size: 120,
+                    color: const Color(0xFFBDBDBD),
+                  ),
+                ),
         ),
         // 태그 뱃지
         Positioned(
@@ -431,7 +495,9 @@ class _ProductPageState extends State<ProductPage>
                   children: [
                     // 상품 설명
                     Text(
-                      product.description,
+                      product.description.trim().isNotEmpty
+                          ? product.description
+                          : '${product.name}의 상세 상품 정보입니다.\n수지씨앤엘 정품 보증 제품입니다.',
                       style: const TextStyle(
                         fontSize: 14,
                         color: _textDark,

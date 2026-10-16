@@ -19,6 +19,7 @@ class ProductDataService {
       tagColor: const Color(0xFF4CAF50),
       category: '롤매트',
       icon: Icons.view_column,
+      imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&auto=format&fit=crop&q=80',
       rating: 4.6,
       reviewCount: 128,
       description:
@@ -38,6 +39,7 @@ class ProductDataService {
       tagColor: const Color(0xFF4CAF50),
       category: '현관발매트',
       icon: Icons.door_front_door,
+      imageUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=500&auto=format&fit=crop&q=80',
       rating: 4.3,
       reviewCount: 74,
       description:
@@ -57,6 +59,7 @@ class ProductDataService {
       tagColor: const Color(0xFF4CAF50),
       category: '인조잔디',
       icon: Icons.grass,
+      imageUrl: 'https://images.unsplash.com/photo-1592417817098-8f3d6910283f?w=500&auto=format&fit=crop&q=80',
       rating: 4.7,
       reviewCount: 201,
       description:
@@ -75,6 +78,7 @@ class ProductDataService {
       tagColor: const Color(0xFF4CAF50),
       category: '청소용품',
       icon: Icons.cleaning_services,
+      imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=500&auto=format&fit=crop&q=80',
       rating: 4.2,
       reviewCount: 53,
       description:
@@ -94,6 +98,7 @@ class ProductDataService {
       tagColor: const Color(0xFFE53935),
       category: '롤매트',
       icon: Icons.view_column,
+      imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=500&auto=format&fit=crop&q=80',
       rating: 4.9,
       reviewCount: 512,
       description:
@@ -112,6 +117,7 @@ class ProductDataService {
       tagColor: const Color(0xFFE53935),
       category: '현관발매트',
       icon: Icons.door_front_door,
+      imageUrl: 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=500&auto=format&fit=crop&q=80',
       rating: 4.5,
       reviewCount: 389,
       description:
@@ -130,6 +136,7 @@ class ProductDataService {
       tagColor: const Color(0xFFE53935),
       category: '인조잔디',
       icon: Icons.grass,
+      imageUrl: 'https://images.unsplash.com/photo-1558904541-efa8c4a08931?w=500&auto=format&fit=crop&q=80',
       rating: 4.4,
       reviewCount: 176,
       description:
@@ -148,6 +155,7 @@ class ProductDataService {
       tagColor: const Color(0xFFE53935),
       category: '침구',
       icon: Icons.king_bed,
+      imageUrl: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=500&auto=format&fit=crop&q=80',
       rating: 4.8,
       reviewCount: 293,
       description:

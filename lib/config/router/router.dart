@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shopmall/models/product.dart';
 import 'package:shopmall/views/cart.dart';
 import 'package:shopmall/views/category.dart';
 import 'package:shopmall/views/home.dart';
@@ -93,7 +94,8 @@ final router = GoRouter(
       name: 'product-detail',
       builder: (context, state) {
         final productId = state.pathParameters['id']!;
-        return ProductPage(productId: productId);
+        final product = state.extra as Product?;
+        return ProductPage(productId: productId, initialProduct: product);
       },
     ),
   ],

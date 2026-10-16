@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
+import 'package:shopmall/models/category.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/category_viewmodel.dart';
+import 'package:shopmall/viewmodels/home_products_viewmodel.dart';
 
 class Home extends ConsumerStatefulWidget {
   const Home({super.key});
@@ -39,21 +42,6 @@ class _HomeState extends ConsumerState<Home> {
     ),
   ];
 
-  // 카테고리 데이터
-  final List<_CategoryItem> _categories = [
-    _CategoryItem(label: '전체상품', icon: Icons.grid_view),
-    _CategoryItem(label: '롤매트', icon: Icons.view_column),
-    _CategoryItem(label: '현관발매트', icon: Icons.door_front_door),
-    _CategoryItem(label: '인조잔디', icon: Icons.grass),
-    _CategoryItem(label: '청소용품', icon: Icons.cleaning_services),
-    _CategoryItem(label: '생활주방', icon: Icons.kitchen),
-    _CategoryItem(label: '침구', icon: Icons.king_bed),
-    _CategoryItem(label: '할인특가', icon: Icons.local_offer),
-  ];
-
-  final List<Product> _newProducts = ProductDataService.newProducts;
-  final List<Product> _bestProducts = ProductDataService.bestProducts;
-
   @override
   void dispose() {
     _bannerController.dispose();
@@ -62,6 +50,10 @@ class _HomeState extends ConsumerState<Home> {
 
   @override
   Widget build(BuildContext context) {
+    final categoriesAsync = ref.watch(categoriesProvider);
+    final newProductsAsync = ref.watch(newProductsProvider);
+    final bestProductsAsync = ref.watch(bestProductsProvider);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -120,15 +112,15 @@ class _HomeState extends ConsumerState<Home> {
           children: [
             _buildBannerSlider(),
             const SizedBox(height: 24),
-            _buildCategoryRow(),
+            _buildCategoryRow(categoriesAsync),
             const SizedBox(height: 28),
             _buildSectionTitle('신상품', '더보기'),
             const SizedBox(height: 12),
-            _buildProductGrid(_newProducts),
+            _buildProductSection(newProductsAsync),
             const SizedBox(height: 28),
             _buildSectionTitle('베스트 상품', '더보기'),
             const SizedBox(height: 12),
-            _buildProductGrid(_bestProducts),
+            _buildProductSection(bestProductsAsync),
             const SizedBox(height: 28),
             _buildNoticeBanner(),
             const SizedBox(height: 28),
@@ -230,16 +222,18 @@ class _HomeState extends ConsumerState<Home> {
     );
   }
 
-  Widget _buildCategoryRow() {
+  Widget _buildCategoryRow(AsyncValue<List<ShopCategory>> categoriesAsync) {
+    final categories = categoriesAsync.value ?? defaultCategories;
+
     return SizedBox(
       height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _categories.length,
+        itemCount: categories.length,
         separatorBuilder: (context, index) => const SizedBox(width: 16),
         itemBuilder: (context, index) {
-          final cat = _categories[index];
+          final cat = categories[index];
           return GestureDetector(
             onTap: () {
               ref.read(bottomNavProvider.notifier).setIndex(BottomNavIndex.category);
@@ -258,7 +252,7 @@ class _HomeState extends ConsumerState<Home> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  cat.label,
+                  cat.name,
                   style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w500),
                 ),
               ],
@@ -289,6 +283,34 @@ class _HomeState extends ConsumerState<Home> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProductSection(AsyncValue<List<Product>> productsAsync) {
+    return productsAsync.when(
+      data: (products) => _buildProductGrid(products),
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      ),
+      error: (err, stack) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Center(
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.grey, size: 32),
+              const SizedBox(height: 8),
+              Text(
+                '상품을 불러오지 못했습니다.\n($err)',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -354,8 +376,10 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasImage = product.imageUrl != null && product.imageUrl!.trim().isNotEmpty;
+
     return GestureDetector(
-      onTap: () => context.push('/products/${product.id}'),
+      onTap: () => context.push('/products/${product.id}', extra: product),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -375,7 +399,35 @@ class _ProductCard extends StatelessWidget {
                     width: double.infinity,
                     height: 130,
                     color: const Color(0xFFF8FAFC),
-                    child: Icon(product.icon, size: 60, color: const Color(0xFFCBD5E1)),
+                    child: hasImage
+                        ? Image.network(
+                            product.imageUrl!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Center(
+                                child: Icon(product.icon, size: 50, color: const Color(0xFFCBD5E1)),
+                              );
+                            },
+                          )
+                        : Center(
+                            child: Icon(product.icon, size: 50, color: const Color(0xFFCBD5E1)),
+                          ),
                   ),
                   Positioned(
                     top: 8,
