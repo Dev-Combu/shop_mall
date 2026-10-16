@@ -4,10 +4,12 @@ import 'package:shopmall/models/product.dart';
 import 'package:shopmall/views/cart.dart';
 import 'package:shopmall/views/category.dart';
 import 'package:shopmall/views/home.dart';
+import 'package:shopmall/views/login.dart';
 import 'package:shopmall/views/my_page.dart';
 import 'package:shopmall/views/product.dart';
 import 'package:shopmall/views/share/scaffold_shell_layout.dart';
 import 'package:shopmall/views/search.dart';
+import 'package:shopmall/views/signup.dart';
 
 /// 앱 전체 라우터 설정
 ///
@@ -87,7 +89,7 @@ final router = GoRouter(
 
     // ──────────────────────────────────────────────────────────
     // Shell 밖 라우트: BottomNavBar가 표시되지 않는 화면
-    // (예: 상품 상세, 주문 완료 등 전체화면)
+    // (예: 상품 상세, 로그인, 회원가입 등 전체화면)
     // ──────────────────────────────────────────────────────────
     GoRoute(
       path: '/products/:id',
@@ -97,6 +99,16 @@ final router = GoRouter(
         final product = state.extra as Product?;
         return ProductPage(productId: productId, initialProduct: product);
       },
+    ),
+    GoRoute(
+      path: '/login',
+      name: 'login',
+      builder: (context, state) => const LoginPage(),
+    ),
+    GoRoute(
+      path: '/signup',
+      name: 'signup',
+      builder: (context, state) => const SignUpPage(),
     ),
   ],
 

@@ -1,41 +1,41 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shopmall/models/user.dart';
+import 'package:shopmall/services/cafe24_customer_auth_service.dart';
 
 class AuthViewModel extends Notifier<User?> {
+  late final Cafe24CustomerAuthService _authService;
+
   @override
   User? build() {
-    // 초기 상태: 로그인 상태로 테스트 (기본 샘플 유저)
-    return User(
-      id: '1',
-      name: '홍길동',
-      email: 'hong@example.com',
-      points: 2500,
-      coupons: 3,
-      orders: 2,
-    );
+    _authService = ref.watch(cafe24CustomerAuthServiceProvider);
+    // 앱 시작 시 저장된 수지씨앤엘 세션 자동 복원
+    _restoreSession();
+    return null;
   }
 
-  void login() {
-    state = User(
-      id: '1',
-      name: '홍길동',
-      email: 'hong@example.com',
-      points: 2500,
-      coupons: 3,
-      orders: 2,
-    );
-  }
-
-  void logout() {
-    state = null;
-  }
-
-  void toggleAuth() {
-    if (state == null) {
-      login();
-    } else {
-      logout();
+  Future<void> _restoreSession() async {
+    final storedUser = await _authService.restoreSession();
+    if (storedUser != null) {
+      state = storedUser;
     }
+  }
+
+  /// 수지씨앤엘 쇼핑몰 인증(로그인/회원가입) 완료 후 사용자 세션 반영
+  Future<void> setAuthenticatedUser(User user) async {
+    await _authService.saveSession(user);
+    state = user;
+  }
+
+  /// 1초 데모 로그인 (테스트용)
+  Future<void> loginWithDemo() async {
+    final user = await _authService.loginWithDemoAccount();
+    state = user;
+  }
+
+  /// 로그아웃 및 세션 제거
+  Future<void> logout() async {
+    await _authService.clearSession();
+    state = null;
   }
 }
 
