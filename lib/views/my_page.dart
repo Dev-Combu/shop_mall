@@ -64,13 +64,24 @@ class MyPage extends ConsumerWidget {
                   ? _buildLoggedInHeader(context, ref, user)
                   : _buildLoggedOutHeader(context, ref),
             ),
-            const SizedBox(height: 16),
             if (isLoggedIn) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _buildQuickMenuGrid(context),
               ),
               const SizedBox(height: 16),
+              _buildSettingSection(
+                title: '내 정보 및 계정 관리',
+                items: [
+                  _SettingItem(
+                    icon: Icons.account_circle_outlined,
+                    title: '회원 정보 확인',
+                    subtitle: '아이디, 이름, 연락처 및 Cafe24 연동 상태',
+                    onTap: () => context.push('/profile'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
             ],
             _buildSettingSection(
               title: '주문 및 배송 관리',
@@ -191,75 +202,79 @@ class MyPage extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppTheme.chipBackground,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.border, width: 1.5),
+          InkWell(
+            onTap: () => context.push('/profile'),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: AppTheme.chipBackground,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.border, width: 1.5),
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      size: 36,
+                      color: AppTheme.primary,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.person,
-                    size: 36,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            user.name,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.chipBackground,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              user.groupName,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              user.name,
                               style: const TextStyle(
-                                color: AppTheme.primary,
-                                fontSize: 11,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
+                                color: AppTheme.primary,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'ID: ${user.id} · ${user.email}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF64748B),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.chipBackground,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                user.groupName,
+                                style: const TextStyle(
+                                  color: AppTheme.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          'ID: ${user.id} · ${user.email}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.settings_outlined, color: Color(0xFF64748B)),
-                  tooltip: '회원정보 수정',
-                ),
-              ],
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 24,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1, color: Color(0xFFF1F5F9)),

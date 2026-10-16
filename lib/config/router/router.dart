@@ -6,7 +6,7 @@ import 'package:shopmall/views/category.dart';
 import 'package:shopmall/views/home.dart';
 import 'package:shopmall/views/login.dart';
 import 'package:shopmall/views/my_page.dart';
-import 'package:shopmall/views/product.dart';
+import 'package:shopmall/views/profile.dart';
 import 'package:shopmall/views/share/scaffold_shell_layout.dart';
 import 'package:shopmall/views/search.dart';
 import 'package:shopmall/views/signup.dart';
@@ -109,6 +109,11 @@ final router = GoRouter(
       path: '/signup',
       name: 'signup',
       builder: (context, state) => const SignUpPage(),
+    ),
+    GoRoute(
+      path: '/profile',
+      name: 'profile',
+      builder: (context, state) => const ProfilePage(),
     ),
   ],
 
