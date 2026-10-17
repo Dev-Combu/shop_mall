@@ -413,6 +413,7 @@ class Cafe24ApiService {
     }
   }
 
+
   /// 환경변수 필수값 검증
   void _validateCredentials() {
     if (mallId.isEmpty) {

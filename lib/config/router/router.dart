@@ -11,6 +11,7 @@ import 'package:shopmall/views/profile.dart';
 import 'package:shopmall/views/share/scaffold_shell_layout.dart';
 import 'package:shopmall/views/search.dart';
 import 'package:shopmall/views/signup.dart';
+import 'package:shopmall/views/withdrawal.dart';
 
 /// 앱 전체 라우터 설정
 ///
@@ -115,6 +116,11 @@ final router = GoRouter(
       path: '/profile',
       name: 'profile',
       builder: (context, state) => const ProfilePage(),
+    ),
+    GoRoute(
+      path: '/withdrawal',
+      name: 'withdrawal',
+      builder: (context, state) => const WithdrawalPage(),
     ),
   ],
 

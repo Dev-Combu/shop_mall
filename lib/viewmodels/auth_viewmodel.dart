@@ -22,8 +22,8 @@ class AuthViewModel extends Notifier<User?> {
 
   /// 수지씨앤엘 쇼핑몰 인증(로그인/회원가입) 완료 후 사용자 세션 반영
   Future<void> setAuthenticatedUser(User user) async {
-    await _authService.saveSession(user);
-    state = user;
+    final merged = await _authService.saveSession(user);
+    state = merged;
   }
 
   /// 1초 데모 로그인 (테스트용)
@@ -34,6 +34,12 @@ class AuthViewModel extends Notifier<User?> {
 
   /// 로그아웃 및 세션 제거
   Future<void> logout() async {
+    await _authService.clearSession();
+    state = null;
+  }
+
+  /// 회원탈퇴 완료 후 로컬 보안 세션 및 쿠키 완전 파기
+  Future<void> withdrawAccount() async {
     await _authService.clearSession();
     state = null;
   }

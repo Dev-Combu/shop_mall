@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/user.dart';
 import 'package:shopmall/viewmodels/auth_viewmodel.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 /// 수지씨앤엘 쇼핑몰 회원 정보 확인 및 상세 조회 페이지
 class ProfilePage extends ConsumerStatefulWidget {
@@ -14,12 +18,196 @@ class ProfilePage extends ConsumerStatefulWidget {
 }
 
 class _ProfilePageState extends ConsumerState<ProfilePage> {
+  static const String _modifyUrl = 'https://suzicnl.com/member/modify.html';
+
+  late final WebViewController _syncController;
+  Completer<void>? _syncCompleter;
   bool _isRefreshing = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _initProfileSyncEngine();
+  }
+
+  /// 백그라운드에서 Cafe24 회원정보 수정 페이지(/member/modify.html) 및 마이쇼핑(/myshop/index.html)을 조회하여
+  /// 휴대폰 번호(mobile[]), 이메일(email1), 실명(name), 적립금, 쿠폰을 최신 상태로 동기화
+  void _initProfileSyncEngine() {
+    _syncController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'Cafe24ProfileBridge',
+        onMessageReceived: (JavaScriptMessage message) {
+          _handleProfileSyncMessage(message.message);
+        },
+      )
+      ..setOnJavaScriptAlertDialog((JavaScriptAlertDialogRequest request) async {
+        if (_syncCompleter != null && !_syncCompleter!.isCompleted) {
+          _syncCompleter!.complete();
+        }
+      })
+      ..setOnJavaScriptConfirmDialog(
+        (JavaScriptConfirmDialogRequest request) async => true,
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
+            if (url.contains('/member/modify.html')) {
+              _extractFromModifyPage();
+            } else if (_syncCompleter != null && !_syncCompleter!.isCompleted) {
+              _syncCompleter!.complete();
+            }
+          },
+        ),
+      );
+
+    // 페이지 진입 시 자동으로 Cafe24 서버에서 최신 전화번호/이메일/적립금 동기화
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = ref.read(authProvider);
+      if (user != null && user.id != 'suzicnl1') {
+        _syncController.loadRequest(Uri.parse(_modifyUrl));
+      }
+    });
+  }
+
+  /// Cafe24의 /member/modify.html은 개인정보(휴대폰 번호, 이메일, 실명)를 페이지 로드 후
+  /// AuthSSLManager 비동기 복호화 스크립트로 input value에 채워 넣으므로 최대 3초 폴링 대기 후 추출
+  Future<void> _extractFromModifyPage() async {
+    await _syncController.runJavaScript('''
+      (function() {
+        var attempts = 0;
+        var maxAttempts = 15; // 200ms * 15 = 최대 3초 폴링 대기
+
+        function checkDecryptedFields() {
+          attempts++;
+          try {
+            var modNameEl = document.querySelector('#name, input[name="name"]');
+            var modEmailEl = document.querySelector('#email1, input[name="email1"]');
+            var mobiles = document.querySelectorAll('select[name="mobile[]"], input[name="mobile[]"], #mobile1, #mobile2, #mobile3');
+            var phones = document.querySelectorAll('select[name="phone[]"], input[name="phone[]"], #phone1, #phone2, #phone3');
+
+            var phoneStr = '';
+            if (mobiles.length >= 3) {
+              var m1 = (mobiles[0].value || '010').trim();
+              var m2 = (mobiles[1].value || '').trim();
+              var m3 = (mobiles[2].value || '').trim();
+              if (m2 && m3) {
+                phoneStr = m1 + '-' + m2 + '-' + m3;
+              }
+            }
+            if (!phoneStr && phones.length >= 3) {
+              var p1 = (phones[0].value || '02').trim();
+              var p2 = (phones[1].value || '').trim();
+              var p3 = (phones[2].value || '').trim();
+              if (p2 && p3) {
+                phoneStr = p1 + '-' + p2 + '-' + p3;
+              }
+            }
+
+            var nameVal = (modNameEl && modNameEl.value) ? modNameEl.value.trim() : '';
+            var emailVal = (modEmailEl && modEmailEl.value) ? modEmailEl.value.trim() : '';
+
+            // AuthSSLManager 복호화가 아직 완료되지 않아 휴대폰 번호가 비어있다면 200ms 후 재확인
+            if (!phoneStr && attempts < maxAttempts) {
+              setTimeout(checkDecryptedFields, 200);
+              return;
+            }
+
+            fetch('/myshop/index.html', { credentials: 'include' })
+              .then(function(res) { return res.text(); })
+              .then(function(html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var groupEl = doc.querySelector('.xans-myshop-asyncbenefit .group, .xans-member-var-group_name');
+                var pointEl = doc.querySelector('#xans_myshop_bankbook_avail_mileage, .avail_mileage');
+                var couponEl = doc.querySelector('#xans_myshop_bankbook_coupon_cnt, .couponCount');
+
+                Cafe24ProfileBridge.postMessage(JSON.stringify({
+                  name: nameVal,
+                  email: emailVal,
+                  phone: phoneStr,
+                  groupName: groupEl ? groupEl.innerText.trim() : '',
+                  points: pointEl ? pointEl.innerText.replace(/[^0-9]/g, '') : '',
+                  coupons: couponEl ? couponEl.innerText.replace(/[^0-9]/g, '') : ''
+                }));
+              })
+              .catch(function() {
+                Cafe24ProfileBridge.postMessage(JSON.stringify({
+                  name: nameVal,
+                  email: emailVal,
+                  phone: phoneStr,
+                  groupName: '',
+                  points: '',
+                  coupons: ''
+                }));
+              });
+          } catch (e) {
+            Cafe24ProfileBridge.postMessage(JSON.stringify({}));
+          }
+        }
+
+        checkDecryptedFields();
+      })();
+    ''');
+  }
+
+  Future<void> _handleProfileSyncMessage(String raw) async {
+    try {
+      final currentUser = ref.read(authProvider);
+      if (currentUser == null) return;
+
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final syncedName = data['name']?.toString().trim() ?? '';
+      final syncedEmail = data['email']?.toString().trim() ?? '';
+      final syncedPhone = data['phone']?.toString().trim() ?? '';
+      final syncedGroup = data['groupName']
+              ?.toString()
+              .replaceAll(RegExp(r'[\[\]]'), '')
+              .trim() ??
+          '';
+      final syncedPointsStr = data['points']?.toString().trim() ?? '';
+      final syncedCouponsStr = data['coupons']?.toString().trim() ?? '';
+
+      final updatedUser = currentUser.copyWith(
+        name: syncedName.isNotEmpty ? syncedName : currentUser.name,
+        email: syncedEmail.isNotEmpty ? syncedEmail : currentUser.email,
+        phone: syncedPhone.isNotEmpty ? syncedPhone : currentUser.phone,
+        groupName: syncedGroup.isNotEmpty ? syncedGroup : currentUser.groupName,
+        points: syncedPointsStr.isNotEmpty
+            ? (int.tryParse(syncedPointsStr) ?? currentUser.points)
+            : currentUser.points,
+        coupons: syncedCouponsStr.isNotEmpty
+            ? (int.tryParse(syncedCouponsStr) ?? currentUser.coupons)
+            : currentUser.coupons,
+      );
+
+      await ref.read(authProvider.notifier).setAuthenticatedUser(updatedUser);
+    } catch (_) {
+    } finally {
+      if (_syncCompleter != null && !_syncCompleter!.isCompleted) {
+        _syncCompleter!.complete();
+      }
+    }
+  }
+
   Future<void> _handleRefresh() async {
+    final user = ref.read(authProvider);
+    if (user == null) return;
+
     setState(() => _isRefreshing = true);
-    // 세션 정보 리로드
-    await Future.delayed(const Duration(milliseconds: 500));
+    try {
+      if (user.id != 'suzicnl1') {
+        _syncCompleter = Completer<void>();
+        await _syncController.loadRequest(Uri.parse(_modifyUrl));
+        await _syncCompleter!.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {},
+        );
+      } else {
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+    } catch (_) {}
+
     if (mounted) {
       setState(() => _isRefreshing = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -129,9 +317,26 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: user == null
-          ? _buildLoggedOutView(context)
-          : RefreshIndicator(
+      body: Stack(
+        children: [
+          // 백그라운드 회원정보(/member/modify.html) 실시간 동기화용 비가시성(1x1) 엔진
+          Positioned(
+            left: 0,
+            bottom: 0,
+            width: 1,
+            height: 1,
+            child: Opacity(
+              opacity: 0.0,
+              child: IgnorePointer(
+                child: WebViewWidget(controller: _syncController),
+              ),
+            ),
+          ),
+
+          if (user == null)
+            _buildLoggedOutView(context)
+          else
+            RefreshIndicator(
               onRefresh: _handleRefresh,
               color: AppTheme.primary,
               child: SingleChildScrollView(
@@ -154,6 +359,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 ),
               ),
             ),
+        ],
+      ),
     );
   }
 
@@ -605,6 +812,25 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        Center(
+          child: TextButton.icon(
+            onPressed: () => context.push('/withdrawal'),
+            icon: const Icon(
+              Icons.person_remove_outlined,
+              size: 16,
+              color: Color(0xFF94A3B8),
+            ),
+            label: const Text(
+              '회원탈퇴',
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF94A3B8),
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -613,4 +839,3 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 extension _BindContext on void Function(BuildContext) {
   VoidCallback bind(BuildContext context) => () => this(context);
 }
-

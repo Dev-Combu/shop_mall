@@ -79,6 +79,12 @@ class MyPage extends ConsumerWidget {
                     subtitle: '아이디, 이름, 연락처 및 Cafe24 연동 상태',
                     onTap: () => context.push('/profile'),
                   ),
+                  _SettingItem(
+                    icon: Icons.person_remove_outlined,
+                    title: '회원탈퇴',
+                    subtitle: '수지씨앤엘 쇼핑몰 계정 영구 삭제',
+                    onTap: () => context.push('/withdrawal'),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),

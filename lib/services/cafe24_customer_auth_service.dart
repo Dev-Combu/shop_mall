@@ -17,6 +17,7 @@ class Cafe24CustomerAuthService {
   final FlutterSecureStorage _storage;
 
   static const _keySessionUser = 'cafe24_customer_session_user';
+  static const _keyMemberDirectory = 'cafe24_member_directory';
 
   Cafe24CustomerAuthService({
     FlutterSecureStorage? storage,
@@ -31,6 +32,7 @@ class Cafe24CustomerAuthService {
       id: 'suzicnl1',
       name: '수지씨앤엘(테스트)',
       email: 'suzicnl1@suzicnl.com',
+      phone: '010-5283-3266',
       groupName: '수지씨앤엘 정회원',
       points: 3500,
       coupons: 3,
@@ -41,14 +43,42 @@ class Cafe24CustomerAuthService {
     return demoUser;
   }
 
-  /// 세션 영구 저장
-  Future<void> saveSession(User user) async {
+  /// 세션 영구 저장 (기존에 저장된 전화번호/이메일/이름이 있으면 누락 방지 병합)
+  Future<User> saveSession(User user) async {
+    User mergedUser = user;
     try {
+      final dirRaw = await _storage.read(key: _keyMemberDirectory);
+      final Map<String, dynamic> dir = dirRaw != null && dirRaw.isNotEmpty
+          ? (jsonDecode(dirRaw) as Map<String, dynamic>)
+          : <String, dynamic>{};
+
+      final prevMap = dir[user.id];
+      if (prevMap is Map<String, dynamic>) {
+        final prevUser = User.fromJson(prevMap);
+        mergedUser = user.copyWith(
+          phone: (user.phone != null && user.phone!.trim().isNotEmpty)
+              ? user.phone
+              : prevUser.phone,
+          email: (user.email.isNotEmpty && !user.email.endsWith('@suzicnl.com'))
+              ? user.email
+              : (prevUser.email.isNotEmpty ? prevUser.email : user.email),
+          name: (user.name.isNotEmpty && user.name != user.id)
+              ? user.name
+              : (prevUser.name.isNotEmpty ? prevUser.name : user.name),
+        );
+      }
+
+      dir[mergedUser.id] = mergedUser.toJson();
+      await _storage.write(
+        key: _keyMemberDirectory,
+        value: jsonEncode(dir),
+      );
       await _storage.write(
         key: _keySessionUser,
-        value: jsonEncode(user.toJson()),
+        value: jsonEncode(mergedUser.toJson()),
       );
     } catch (_) {}
+    return mergedUser;
   }
 
   /// 저장된 로그인 세션 복원 (자동 로그인)
