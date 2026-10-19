@@ -1,6 +1,9 @@
 # Model & Reasoning Effort Selection Rules
 
-작업을 위임하거나 하위 에이전트를 호출할 때 아래 기준에 따라 모델과 추론 강도를 지정한다:
+**[Target Agent]** Main Orchestrator / Planner
+**[Trigger]** 사용자의 새로운 요청을 분석하고 하위 작업을 위임(Delegate)할 때 반드시 이 규칙을 최우선으로 적용한다.
+
+## 하위 작업 위임 기준
 
 1. 아키텍처 계획 및 시스템 분석
    - 모델: Gemini 4 Argon

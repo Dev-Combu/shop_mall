@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/user.dart';
 import 'package:shopmall/viewmodels/auth_viewmodel.dart';
+import 'package:shopmall/views/share/kakao_sync_auth_sheet.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -386,6 +387,27 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
   }
 
+  Future<void> _handleKakaoLogin() async {
+    setState(() {
+      _errorMessage = null;
+    });
+
+    final kakaoUser = await KakaoSyncAuthSheet.show(context);
+    if (kakaoUser == null || !mounted) return;
+
+    await ref.read(authProvider.notifier).setAuthenticatedUser(kakaoUser);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('카카오 계정(${kakaoUser.name})으로 로그인되었습니다.'),
+        backgroundColor: AppTheme.primary,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    context.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -608,7 +630,58 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: const [
+                      Expanded(child: Divider(color: Color(0xFFE2E8F0))),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '간편 로그인',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Expanded(child: Divider(color: Color(0xFFE2E8F0))),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 카카오싱크(Kakao Sync) 공식 1초 로그인 버튼
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSubmitting ? null : _handleKakaoLogin,
+                      icon: const Icon(
+                        Icons.chat_bubble_rounded,
+                        size: 20,
+                        color: Color(0xFF191919),
+                      ),
+                      label: const Text(
+                        '카카오로 1초 로그인 / 회원가입',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF191919),
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFEE500),
+                        foregroundColor: const Color(0xFF191919),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
 
                   SizedBox(
                     height: 44,
