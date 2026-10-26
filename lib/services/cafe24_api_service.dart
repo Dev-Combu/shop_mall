@@ -63,6 +63,36 @@ class Cafe24ApiService {
 
   String get mallId => dotenv.env['Mall_ID']?.trim() ?? '';
 
+  /// 현재 플랫폼(iOS / Android)에 맞는 Client ID 반환
+  String get clientId {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final androidId = dotenv.env['Client_ID_Android']?.trim() ?? '';
+      if (androidId.isNotEmpty) return androidId;
+    }
+    final iosId = dotenv.env['Client_ID_IOS']?.trim() ?? '';
+    if (iosId.isNotEmpty) return iosId;
+    return dotenv.env['Client_ID_Android']?.trim() ?? '';
+  }
+
+  /// 현재 플랫폼에 맞는 Front API Key 반환
+  String get frontApiKey {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final androidKey = dotenv.env['Front_Api_Key_Android']?.trim() ?? '';
+      if (androidKey.isNotEmpty) return androidKey;
+    }
+    final iosKey = dotenv.env['Front_Api_Key_IOS']?.trim() ?? '';
+    if (iosKey.isNotEmpty) return iosKey;
+    return dotenv.env['Front_Api_Key_Android']?.trim() ?? '';
+  }
+
+  /// 만료 없는 Front API 사용 가능 여부 (Client ID + Front API Key 존재 시 true)
+  bool get hasFrontApiKey => clientId.isNotEmpty && frontApiKey.isNotEmpty;
+
+  /// 유효한 인증 자격증명(Front API 키 또는 OAuth 토큰)이 있는지 여부
+  bool get hasCredentials =>
+      mallId.isNotEmpty &&
+      (hasFrontApiKey || accessToken.isNotEmpty || refreshToken.isNotEmpty);
+
   String get accessToken =>
       (_accessToken != null && _accessToken!.isNotEmpty)
           ? _accessToken!
@@ -280,6 +310,32 @@ class Cafe24ApiService {
     }
   }
 
+  /// Front API 전용 Basic Auth 헤더 생성 (Client_ID:Front_Api_Key Base64 인코딩)
+  Map<String, String> _buildFrontApiHeaders() {
+    final basicAuth = base64Encode(utf8.encode('$clientId:$frontApiKey'));
+    return {
+      'Authorization': 'Basic $basicAuth',
+      'X-Cafe24-Client-Id': clientId,
+      'Content-Type': 'application/json',
+      'X-Cafe24-Api-Version': '2026-09-01',
+    };
+  }
+
+  /// 만료 없는 Front API GET 호출 헬퍼
+  Future<Response<dynamic>> _getFrontApi(
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+    final url = 'https://$mallId.cafe24api.com/api/v2/$cleanEndpoint';
+
+    return await _dio.get(
+      url,
+      queryParameters: queryParameters,
+      options: Options(headers: _buildFrontApiHeaders()),
+    );
+  }
+
   /// 상품 목록 조회
   ///
   /// [limit]: 가져올 상품 개수 (기본 20개, 최대 100개)
@@ -291,8 +347,6 @@ class Cafe24ApiService {
     String selling = 'T',
     int? categoryNo,
   }) async {
-    final url = 'https://$mallId.cafe24api.com/api/v2/admin/products';
-
     final queryParams = <String, dynamic>{
       'limit': limit.clamp(1, 100),
       'display': display,
@@ -303,10 +357,20 @@ class Cafe24ApiService {
     }
 
     try {
-      final response = await _getWithAutoRefresh(
-        url,
-        queryParameters: queryParams,
-      );
+      Response<dynamic> response;
+      if (hasFrontApiKey) {
+        debugPrint('[Cafe24ApiService] Front API로 상품 목록 조회 (만료 없는 Basic Auth 사용)');
+        try {
+          response = await _getFrontApi('products', queryParameters: queryParams);
+        } on DioException catch (frontErr) {
+          debugPrint('[Cafe24ApiService] Front API 호출 실패 (status: ${frontErr.response?.statusCode}), Admin API로 fallback: $frontErr');
+          final url = 'https://$mallId.cafe24api.com/api/v2/admin/products';
+          response = await _getWithAutoRefresh(url, queryParameters: queryParams);
+        }
+      } else {
+        final url = 'https://$mallId.cafe24api.com/api/v2/admin/products';
+        response = await _getWithAutoRefresh(url, queryParameters: queryParams);
+      }
 
       // 2. 정상 응답 처리
       if (response.statusCode == 200 && response.data != null) {
@@ -354,14 +418,170 @@ class Cafe24ApiService {
     }
   }
 
+  /// 메인 진열 상품 목록 조회 (Cafe24 관리자 > 상품 > 상품진열 > 메인 진열 연동)
+  ///
+  /// - [displayGroup]: 메인 진열 번호
+  ///   - `2`: NEW PRODUCT (신상품)
+  ///   - `3`: BEST MAT TOP 10 (베스트 상품)
+  ///   - `4`: OTHER 추천 상품
+  Future<List<Product>> fetchMainDisplayProducts(
+    int displayGroup, {
+    int limit = 20,
+    bool forceNew = false,
+    bool forceRecommend = false,
+    String? forceTag,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'limit': limit.clamp(1, 100),
+    };
+
+    try {
+      Response<dynamic> response;
+      if (hasFrontApiKey) {
+        debugPrint('[Cafe24ApiService] Front API로 메인 진열($displayGroup) 상품 조회');
+        try {
+          response = await _getFrontApi(
+            'mains/$displayGroup/products',
+            queryParameters: queryParams,
+          );
+        } on DioException catch (frontErr) {
+          debugPrint('[Cafe24ApiService] Front API 메인 진열 조회 실패, Admin API로 fallback: $frontErr');
+          final url = 'https://$mallId.cafe24api.com/api/v2/admin/mains/$displayGroup/products';
+          response = await _getWithAutoRefresh(url, queryParameters: queryParams);
+        }
+      } else {
+        final url = 'https://$mallId.cafe24api.com/api/v2/admin/mains/$displayGroup/products';
+        response = await _getWithAutoRefresh(url, queryParameters: queryParams);
+      }
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final rawProducts = data['products'];
+        if (rawProducts is List && rawProducts.isNotEmpty) {
+          // 1. 메인 진열 순서(product_no)와 기본 정보를 추출
+          final List<String> orderedNos = [];
+          final Map<String, Map<String, dynamic>> mainItemsByNo = {};
+
+          for (final item in rawProducts) {
+            if (item is Map<String, dynamic>) {
+              final pNo = item['product_no']?.toString() ?? '';
+              if (pNo.isNotEmpty) {
+                orderedNos.add(pNo);
+                mainItemsByNo[pNo] = item;
+              }
+            }
+          }
+
+          // 2. /mains/{id}/products 응답에는 이미지 필드(list_image 등)가 생략되므로
+          //    추출한 product_no 목록으로 /products?product_no=...를 일괄 조회하여 이미지 및 상세 데이터를 보강
+          final Map<String, Map<String, dynamic>> fullDetailsByNo = {};
+          if (orderedNos.isNotEmpty) {
+            try {
+              final joinedNos = orderedNos.join(',');
+              Response<dynamic> detailResp;
+              if (hasFrontApiKey) {
+                try {
+                  detailResp = await _getFrontApi(
+                    'products',
+                    queryParameters: {
+                      'product_no': joinedNos,
+                      'limit': orderedNos.length.clamp(1, 100),
+                    },
+                  );
+                } on DioException catch (_) {
+                  final detailUrl = 'https://$mallId.cafe24api.com/api/v2/admin/products';
+                  detailResp = await _getWithAutoRefresh(
+                    detailUrl,
+                    queryParameters: {
+                      'product_no': joinedNos,
+                      'limit': orderedNos.length.clamp(1, 100),
+                    },
+                  );
+                }
+              } else {
+                final detailUrl = 'https://$mallId.cafe24api.com/api/v2/admin/products';
+                detailResp = await _getWithAutoRefresh(
+                  detailUrl,
+                  queryParameters: {
+                    'product_no': joinedNos,
+                    'limit': orderedNos.length.clamp(1, 100),
+                  },
+                );
+              }
+
+              if (detailResp.statusCode == 200 && detailResp.data is Map<String, dynamic>) {
+                final detailList = (detailResp.data as Map<String, dynamic>)['products'];
+                if (detailList is List) {
+                  for (final dItem in detailList) {
+                    if (dItem is Map<String, dynamic>) {
+                      final pNo = dItem['product_no']?.toString() ?? '';
+                      if (pNo.isNotEmpty) {
+                        fullDetailsByNo[pNo] = dItem;
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('[Cafe24ApiService] 메인 진열 상품 이미지 상세 조회 보강 중 경고: $e');
+            }
+          }
+
+          // 3. 웹사이트 진열 순서(orderedNos) 그대로 유지하면서 상세 데이터(이미지 포함)로 Product 생성
+          final List<Product> result = [];
+          for (final pNo in orderedNos) {
+            try {
+              final mergedJson = <String, dynamic>{
+                ...?mainItemsByNo[pNo],
+                ...?fullDetailsByNo[pNo],
+              };
+              result.add(
+                Product.fromCafe24Json(
+                  mergedJson,
+                  forceNew: forceNew,
+                  forceRecommend: forceRecommend,
+                  forceTag: forceTag,
+                ),
+              );
+            } catch (itemParseError) {
+              debugPrint('[Cafe24ApiService] 메인 진열 상품 파싱 오류 (건너뜀): $itemParseError');
+            }
+          }
+          return result;
+        }
+      }
+      return [];
+    } on DioException catch (e) {
+      throw _handleDioException(e);
+    } catch (e) {
+      if (e is Cafe24ApiException) rethrow;
+      debugPrint('[Cafe24ApiService] 메인 진열($displayGroup) 조회 예외: $e');
+      throw Cafe24ApiException(
+        message: '메인 진열 상품을 불러오는 중 오류가 발생했습니다: $e',
+        originalError: e,
+      );
+    }
+  }
+
   /// 상품 단건 상세 조회
   Future<Product?> fetchProductDetail(String productNo) async {
     if (productNo.trim().isEmpty) return null;
 
-    final url = 'https://$mallId.cafe24api.com/api/v2/admin/products/$productNo';
-
     try {
-      final response = await _getWithAutoRefresh(url);
+      Response<dynamic> response;
+      if (hasFrontApiKey) {
+        debugPrint('[Cafe24ApiService] Front API로 단건 상품 조회: $productNo');
+        try {
+          response = await _getFrontApi('products/$productNo');
+        } on DioException catch (frontErr) {
+          debugPrint('[Cafe24ApiService] Front API 단건 조회 실패, Admin API로 fallback: $frontErr');
+          final url = 'https://$mallId.cafe24api.com/api/v2/admin/products/$productNo';
+          response = await _getWithAutoRefresh(url);
+        }
+      } else {
+        final url = 'https://$mallId.cafe24api.com/api/v2/admin/products/$productNo';
+        response = await _getWithAutoRefresh(url);
+      }
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -383,13 +603,27 @@ class Cafe24ApiService {
 
   /// 카테고리 목록 조회
   Future<List<ShopCategory>> fetchCategories() async {
-    final url = 'https://$mallId.cafe24api.com/api/v2/admin/categories';
-
     try {
-      final response = await _getWithAutoRefresh(
-        url,
-        queryParameters: {'limit': 100},
-      );
+      Response<dynamic> response;
+      if (hasFrontApiKey) {
+        debugPrint('[Cafe24ApiService] Front API로 카테고리 목록 조회 (만료 없는 Basic Auth 사용)');
+        try {
+          response = await _getFrontApi('categories', queryParameters: {'limit': 100});
+        } on DioException catch (frontErr) {
+          debugPrint('[Cafe24ApiService] Front API 카테고리 조회 실패, Admin API로 fallback: $frontErr');
+          final url = 'https://$mallId.cafe24api.com/api/v2/admin/categories';
+          response = await _getWithAutoRefresh(
+            url,
+            queryParameters: {'limit': 100},
+          );
+        }
+      } else {
+        final url = 'https://$mallId.cafe24api.com/api/v2/admin/categories';
+        response = await _getWithAutoRefresh(
+          url,
+          queryParameters: {'limit': 100},
+        );
+      }
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -413,6 +647,7 @@ class Cafe24ApiService {
     }
   }
 
+
   /// 환경변수 필수값 검증
   void _validateCredentials() {
     if (mallId.isEmpty) {
@@ -421,10 +656,10 @@ class Cafe24ApiService {
         errorCode: 'MISSING_MALL_ID',
       );
     }
-    if (accessToken.isEmpty && refreshToken.isEmpty) {
+    if (!hasFrontApiKey && accessToken.isEmpty && refreshToken.isEmpty) {
       throw Cafe24ApiException(
-        message: 'Cafe24 Access Token이 설정되어 있지 않습니다. 토큰 발급이 필요합니다.',
-        errorCode: 'MISSING_ACCESS_TOKEN',
+        message: 'Cafe24 인증 키(Front API Key 또는 Access Token)가 설정되어 있지 않습니다.',
+        errorCode: 'MISSING_CREDENTIALS',
       );
     }
   }

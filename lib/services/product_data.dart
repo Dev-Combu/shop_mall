@@ -136,7 +136,7 @@ class ProductDataService {
       tagColor: const Color(0xFFE53935),
       category: '인조잔디',
       icon: Icons.grass,
-      imageUrl: 'https://images.unsplash.com/photo-1558904541-efa8c4a08931?w=500&auto=format&fit=crop&q=80',
+      imageUrl: 'https://images.unsplash.com/photo-1592417817098-8f3d6910283f?w=500&auto=format&fit=crop&q=80',
       rating: 4.4,
       reviewCount: 176,
       description:
@@ -165,6 +165,61 @@ class ProductDataService {
           '• 크기: 150 x 200 cm (싱글)\n'
           '• 세탁: 세탁기 가능',
     ),
+
+    // ── 기타 추천 상품 (OTHER) ──
+    Product(
+      id: 'p009',
+      name: '천연 갈대발 햇빛가리개',
+      originalPrice: 14500,
+      discountRate: 15,
+      tag: 'MD',
+      tagColor: const Color(0xFF0284C7),
+      category: '생활주방',
+      icon: Icons.table_rows_rounded,
+      imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=500&auto=format&fit=crop&q=80',
+      rating: 4.6,
+      reviewCount: 88,
+      description:
+          '자연 친화적인 천연 갈대로 제작된 차광발입니다. 베란다, 정원, 창가에 시원한 그늘을 선사합니다.\n\n'
+          '• 소재: 100% 천연 갈대\n'
+          '• 크기: 90 x 180 cm\n'
+          '• 특징: 자외선 차단, 자연 통풍 우수',
+    ),
+    Product(
+      id: 'p010',
+      name: '업소용 극세사 마포걸레 (헤드+봉)',
+      originalPrice: 9800,
+      discountRate: 0,
+      tag: 'MD',
+      tagColor: const Color(0xFF0284C7),
+      category: '청소용품',
+      icon: Icons.cleaning_services_rounded,
+      imageUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=500&auto=format&fit=crop&q=80',
+      rating: 4.7,
+      reviewCount: 142,
+      description:
+          '사무실, 매장, 공공시설 등 대형 바닥 청소에 최적화된 고내구성 마포걸레입니다.\n\n'
+          '• 구성: 스테인리스 봉(130cm) + 탈착형 극세사 헤드\n'
+          '• 특징: 강력한 먼지 흡착, 물빠짐 우수',
+    ),
+    Product(
+      id: 'p011',
+      name: 'DIY 조립식 우드 데크타일 9P',
+      originalPrice: 28900,
+      discountRate: 20,
+      tag: 'MD',
+      tagColor: const Color(0xFF0284C7),
+      category: '생활주방',
+      icon: Icons.grid_view_rounded,
+      imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&auto=format&fit=crop&q=80',
+      rating: 4.8,
+      reviewCount: 215,
+      description:
+          '베란다, 테라스, 욕실 바닥을 손쉽게 카페 감성으로 변신시키는 원목 조립식 데크타일입니다.\n\n'
+          '• 구성: 9장 세트 (약 0.81㎡ 시공)\n'
+          '• 크기: 30 x 30 cm / 장\n'
+          '• 소재: 친환경 아카시아 원목 + 하부 플라스틱 배수판',
+    ),
   ];
 
   /// ID로 단일 상품 조회 (없으면 null)
@@ -183,5 +238,9 @@ class ProductDataService {
   /// 베스트 상품 목록
   static List<Product> get bestProducts =>
       all.where((p) => p.tag == 'BEST').toList();
+
+  /// 기타 추천 상품 목록 (갈대발, 마포걸레, 데크타일 등)
+  static List<Product> get otherProducts =>
+      all.where((p) => p.tag == 'MD').toList();
 }
 

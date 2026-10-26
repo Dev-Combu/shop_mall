@@ -13,6 +13,7 @@
 | **2026-09-28** | 전 화면 UI/UX 전면 리팩토링 및 3단계 브랜드 테마 시스템(`AppTheme`) 구축 | [2026-09-28_ui_and_theme_refactoring.md](./2026-09-28_ui_and_theme_refactoring.md) |
 | **2026-10-14** | Cafe24 OAuth 2.0(PKCE) 인증, 실시간 상품/카테고리(100개) API 연동, 상세 페이지 연결 | [2026-10-14_cafe24_api_and_data_integration.md](./2026-10-14_cafe24_api_and_data_integration.md) |
 | **2026-10-16** | 카테고리 탭 대·중분류 실시간 연동 및 OAuth 토큰 자동 리프레시(`FlutterSecureStorage`) 구현 | [2026-10-16_oauth_auto_refresh_and_category_sync.md](./2026-10-16_oauth_auto_refresh_and_category_sync.md) |
+| **2026-10-16 ~ 10-17** | Cafe24 일반 Auth 전체 구축: 회원가입·로그인(`AuthSSL`), 회원 정보 확인(휴대폰 번호 복호화 폴링), 회원탈퇴 | [2026-10-16_cafe24_auth_and_profile_integration.md](./2026-10-16_cafe24_auth_and_profile_integration.md) |
 
 ---
 
@@ -76,4 +77,22 @@
   - **선제적 갱신**: API 호출 전 만료 시각(`CAFE24_EXPIRES_AT`)을 체크하여 만료 시 자동 리프레시 수행
   - **401 자동 복구**: `401 (access_token time expired)` 발생 시 자동으로 `refresh_token`을 사용해 새 토큰을 발급받고 원래 API를 1회 재요청
   - **동시성 제어 & 영구 저장**: 다중 API 동시 호출 시 리프레시 중복 실행을 방지(`_refreshFuture`)하고, 재발급된 `access_token`과 `refresh_token`을 `FlutterSecureStorage`에 안전하게 영구 저장
+
+---
+
+## 6. 2026-10-16 ~ 2026-10-17: Cafe24 일반 Auth 전체 구축 (회원가입·로그인·회원정보 확인·회원탈퇴)
+> 상세 내역: [`docs/2026-10-16_cafe24_auth_and_profile_integration.md`](./2026-10-16_cafe24_auth_and_profile_integration.md)
+
+- **Cafe24 실시간 회원가입 및 관리자 DB 연동 ([`SignUpPage`](../lib/views/signup.dart))**:
+  - 100% 네이티브 UI 뒤에서 비가시성(`1x1`) WebKit 엔진이 Cafe24 공식 `AuthSSLManager` 일회용 SSL 암호화를 수행하여 `"잘못된 요청입니다."` 오류를 원천 해결
+  - 가입 완료 즉시 Cafe24 쇼핑몰 관리자(`고객 관리 > 회원 조회`)에 신규 회원이 실시간 등록되고 앱 내 자동 로그인 세션 생성
+- **Cafe24 실시간 회원 로그인 및 휴대폰 번호 복호화 폴링 ([`LoginPage`](../lib/views/login.dart))**:
+  - 웹뷰 팝업 없이 네이티브 UI에서 아이디/비밀번호 입력 시 Cafe24 `MemberAction.login` 암호화 로그인 수행
+  - 1단계로 마이쇼핑(`/myshop/index.html`)에서 등급, 적립금, 쿠폰 수를 파싱하고, 2단계로 회원정보 수정(`/member/modify.html`)으로 이동하여 `AuthSSLManager`가 비동기로 복호화해 채워 넣는 휴대폰 번호(`mobile[]`), 이메일(`email1`), 실명(`name`)을 `200ms` 간격 폴링으로 정확히 추출
+- **회원 정보 확인 전용 페이지 ([`ProfilePage`](../lib/views/profile.dart))**:
+  - 회원 기본 정보(아이디, 실명, 이메일, 휴대폰 번호, 등급), 쇼핑 혜택(적립금, 쿠폰, 주문 내역), Cafe24 연동 상태 카드 제공
+  - 페이지 진입 및 새로고침(`Pull-to-Refresh`) 시 백그라운드에서 `/member/modify.html`의 `AuthSSLManager` 복호화 필드를 폴링하여 최신 연락처·이메일·적립금 실시간 동기화
+- **회원탈퇴 기능 ([`WithdrawalPage`](../lib/views/withdrawal.dart))**:
+  - 네이티브 UI에서 탈퇴 유의사항 안내, 탈퇴 사유 선택, 비밀번호 재확인을 거쳐 Cafe24 서버의 `memberLeaveAction` 탈퇴 처리 및 로컬 보안 세션(`FlutterSecureStorage` & WebKit 쿠키) 완전 파기
+
 

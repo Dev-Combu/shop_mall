@@ -3,11 +3,16 @@ import 'package:go_router/go_router.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/views/cart.dart';
 import 'package:shopmall/views/category.dart';
+import 'package:shopmall/views/category_products.dart';
 import 'package:shopmall/views/home.dart';
+import 'package:shopmall/views/login.dart';
 import 'package:shopmall/views/my_page.dart';
 import 'package:shopmall/views/product.dart';
+import 'package:shopmall/views/profile.dart';
 import 'package:shopmall/views/share/scaffold_shell_layout.dart';
 import 'package:shopmall/views/search.dart';
+import 'package:shopmall/views/signup.dart';
+import 'package:shopmall/views/withdrawal.dart';
 
 /// 앱 전체 라우터 설정
 ///
@@ -50,18 +55,7 @@ final router = GoRouter(
           ],
         ),
 
-        // ── Branch 2: 검색 ──
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/search',
-              name: 'search',
-              builder: (context, state) => const SearchPage(),
-            ),
-          ],
-        ),
-
-        // ── Branch 3: 장바구니 ──
+        // ── Branch 2: 장바구니 ──
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -72,7 +66,7 @@ final router = GoRouter(
           ],
         ),
 
-        // ── Branch 4: 마이페이지 ──
+        // ── Branch 3: 마이페이지 ──
         StatefulShellBranch(
           routes: [
             GoRoute(
@@ -87,8 +81,26 @@ final router = GoRouter(
 
     // ──────────────────────────────────────────────────────────
     // Shell 밖 라우트: BottomNavBar가 표시되지 않는 화면
-    // (예: 상품 상세, 주문 완료 등 전체화면)
+    // (예: 검색, 상품 상세, 로그인, 회원가입 등 전체화면)
     // ──────────────────────────────────────────────────────────
+    GoRoute(
+      path: '/search',
+      name: 'search',
+      builder: (context, state) => const SearchPage(),
+    ),
+    GoRoute(
+      path: '/category/products',
+      name: 'category-products',
+      builder: (context, state) {
+        final name = state.uri.queryParameters['name'] ?? '전체보기';
+        final noStr = state.uri.queryParameters['no'];
+        final categoryNo = noStr != null ? int.tryParse(noStr) : null;
+        return CategoryProductsPage(
+          categoryName: name,
+          categoryNo: categoryNo,
+        );
+      },
+    ),
     GoRoute(
       path: '/products/:id',
       name: 'product-detail',
@@ -97,6 +109,26 @@ final router = GoRouter(
         final product = state.extra as Product?;
         return ProductPage(productId: productId, initialProduct: product);
       },
+    ),
+    GoRoute(
+      path: '/login',
+      name: 'login',
+      builder: (context, state) => const LoginPage(),
+    ),
+    GoRoute(
+      path: '/signup',
+      name: 'signup',
+      builder: (context, state) => const SignUpPage(),
+    ),
+    GoRoute(
+      path: '/profile',
+      name: 'profile',
+      builder: (context, state) => const ProfilePage(),
+    ),
+    GoRoute(
+      path: '/withdrawal',
+      name: 'withdrawal',
+      builder: (context, state) => const WithdrawalPage(),
     ),
   ],
 

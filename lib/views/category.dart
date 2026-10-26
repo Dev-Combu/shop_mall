@@ -20,6 +20,61 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
   int _selectedIndex = 0;
   String? _selectedSubCategoryName;
 
+  @override
+  void initState() {
+    super.initState();
+    // 외부(홈 등)에서 선택된 카테고리 필터가 있다면 초기 진입 시 적용
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final initialFilter = ref.read(selectedCategoryFilterProvider);
+      if (initialFilter != null) {
+        final categoriesAsync = ref.read(categoriesProvider);
+        final allCategoriesAsync = ref.read(allCategoriesProvider);
+        final mainCategories = _getMappedCategories(
+          categoriesAsync.value,
+          allCategoriesAsync.value,
+        );
+        setState(() {
+          _applyCategoryFilter(initialFilter, mainCategories);
+        });
+        ref.read(selectedCategoryFilterProvider.notifier).clear();
+      }
+    });
+  }
+
+  void _applyCategoryFilter(String filter, List<_MainCategoryData> mainCategories) {
+    final cleanFilter = filter.replaceAll('#', '').trim();
+    if (cleanFilter.isEmpty) return;
+
+    if (cleanFilter == '신상품' || cleanFilter == 'NEW') {
+      _selectedIndex = 0; // 전체보기
+      _selectedSubCategoryName = '신상품';
+      return;
+    }
+    if (cleanFilter == '베스트' || cleanFilter == 'BEST') {
+      _selectedIndex = 0; // 전체보기
+      _selectedSubCategoryName = '베스트';
+      return;
+    }
+    if (cleanFilter.contains('특가') || cleanFilter.contains('할인')) {
+      _selectedIndex = 0; // 전체보기
+      _selectedSubCategoryName = '특가할인';
+      return;
+    }
+
+    final matchedIndex = mainCategories.indexWhere(
+      (c) => c.name == cleanFilter || c.name.contains(cleanFilter) || cleanFilter.contains(c.name),
+    );
+
+    if (matchedIndex != -1) {
+      _selectedIndex = matchedIndex;
+      _selectedSubCategoryName = null;
+    } else {
+      _selectedIndex = 0;
+      _selectedSubCategoryName = cleanFilter;
+    }
+  }
+
   Color _getCategoryColor(String name) {
     if (name.contains('전체보기')) return AppTheme.primary;
     if (name.contains('롤매트')) return const Color(0xFF0F172A);
@@ -59,7 +114,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
         _SubCategoryData(name: '생활주방', icon: Icons.kitchen, count: 29),
         _SubCategoryData(name: '침구', icon: Icons.king_bed, count: 12),
       ],
-      tags: ['#전상품무료배송', '#신상품', '#베스트', '#특가할인'],
+      tags: ['#신상품', '#베스트', '#특가할인', '#전상품무료배송'],
     ),
     _MainCategoryData(
       id: 'cat_roll',
@@ -73,7 +128,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
         _SubCategoryData(name: '거실용 롤매트', icon: Icons.tv, count: 8),
         _SubCategoryData(name: '복도/주방 매트', icon: Icons.straighten, count: 6),
       ],
-      tags: ['#층간소음완화', '#방수코팅', '#친환경EVA', '#도톰한15mm'],
+      tags: ['#신상품', '#베스트', '#층간소음완화', '#방수코팅'],
     ),
   ];
 
@@ -90,31 +145,36 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       if (c.id == 24 || c.name == '전체보기') {
         subs = all
             .where((sub) => sub.depth == 2)
-            .map((sub) => _SubCategoryData(name: sub.name, icon: sub.icon, count: 10))
+            .map((sub) => _SubCategoryData(id: sub.id, name: sub.name, icon: sub.icon, count: 10))
             .toList();
       } else {
         // depth 3 카테고리 매핑 (parent_category_no == c.id)
         final children = all.where((sub) => sub.parentId == c.id).toList();
         if (children.isNotEmpty) {
           subs = children
-              .map((sub) => _SubCategoryData(name: sub.name, icon: sub.icon, count: 8))
+              .map((sub) => _SubCategoryData(id: sub.id, name: sub.name, icon: sub.icon, count: 8))
               .toList();
         } else {
           subs = [
-            _SubCategoryData(name: '${c.name} 전체', icon: c.icon, count: 12),
+            _SubCategoryData(id: c.id, name: '${c.name} 전체', icon: c.icon, count: 12),
           ];
         }
       }
 
+      final tags = c.name == '전체보기'
+          ? ['#신상품', '#베스트', '#특가할인', '#전상품무료배송']
+          : ['#신상품', '#베스트', '#${c.name}', '#무료배송'];
+
       return _MainCategoryData(
         id: 'cat_${c.id}',
+        categoryNo: c.id,
         name: c.name,
         icon: c.icon,
         bannerTitle: c.name == '전체보기' ? '수지씨앤엘 전상품' : '${c.name} 전문관',
         bannerSub: _getCategoryBannerSubtitle(c.name),
         bannerColor: _getCategoryColor(c.name),
         subCategories: subs,
-        tags: ['#수지씨앤엘', '#정품보증', '#무료배송', '#${c.name}'],
+        tags: tags,
       );
     }).toList();
   }
@@ -127,6 +187,20 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       categoriesAsync.value,
       allCategoriesAsync.value,
     );
+
+    // 외부에서 변경된 카테고리 필터 감지
+    ref.listen<String?>(selectedCategoryFilterProvider, (previous, next) {
+      if (next != null && next != previous) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _applyCategoryFilter(next, mainCategories);
+          });
+          ref.read(selectedCategoryFilterProvider.notifier).clear();
+        });
+      }
+    });
+
     final activeIndex = _selectedIndex.clamp(0, mainCategories.isEmpty ? 0 : mainCategories.length - 1);
     final currentCat = mainCategories.isNotEmpty ? mainCategories[activeIndex] : _fallbackCategories[0];
 
@@ -261,14 +335,55 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
 
   Widget _buildRightContent(_MainCategoryData currentCat) {
     final productsAsync = ref.watch(homeProductsProvider);
+    final newProductsAsync = ref.watch(newProductsProvider);
+    final bestProductsAsync = ref.watch(bestProductsProvider);
     final allProducts = productsAsync.value ?? ProductDataService.all;
 
-    // 카테고리 및 선택된 세부카테고리에 맞춰 실시간 필터링
+    // 카테고리 및 선택된 세부카테고리에 맞춰 정밀 필터링
     List<Product> products = [];
     if (_selectedSubCategoryName != null) {
-      products = allProducts
-          .where((p) => p.matchesCategory(_selectedSubCategoryName!))
-          .toList();
+      final sub = _selectedSubCategoryName!;
+      final base = currentCat.name == '전체보기'
+          ? allProducts
+          : allProducts.where((p) => p.matchesCategory(currentCat.name)).toList();
+
+      if (sub == '신상품' || sub == 'NEW') {
+        if (currentCat.name == '전체보기' &&
+            newProductsAsync.value != null &&
+            newProductsAsync.value!.isNotEmpty) {
+          products = newProductsAsync.value!;
+        } else {
+          products = base.where((p) => p.isNew || p.tag == 'NEW').toList();
+          if (products.isEmpty) {
+            final sorted = List<Product>.from(base);
+            sorted.sort((a, b) {
+              if (a.createdDate != null && b.createdDate != null) {
+                return b.createdDate!.compareTo(a.createdDate!);
+              }
+              final aId = int.tryParse(a.id) ?? 0;
+              final bId = int.tryParse(b.id) ?? 0;
+              return bId.compareTo(aId);
+            });
+            products = sorted.take(8).toList();
+          }
+        }
+      } else if (sub == '베스트' || sub == 'BEST') {
+        if (currentCat.name == '전체보기' &&
+            bestProductsAsync.value != null &&
+            bestProductsAsync.value!.isNotEmpty) {
+          products = bestProductsAsync.value!;
+        } else {
+          products = base.where((p) => p.isRecommend || p.tag == 'BEST').toList();
+          if (products.isEmpty) {
+            final discounted = base.where((p) => p.discountRate > 0 || p.tag == 'SALE').toList();
+            products = discounted.isNotEmpty ? discounted : base.take(8).toList();
+          }
+        }
+      } else if (sub.contains('특가') || sub.contains('할인')) {
+        products = base.where((p) => p.discountRate > 0 || p.tag == 'SALE').toList();
+      } else {
+        products = allProducts.where((p) => p.matchesCategory(sub)).toList();
+      }
     } else if (currentCat.name == '전체보기') {
       products = allProducts;
     } else {
@@ -277,8 +392,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
           .toList();
     }
 
-    // 일치하는 상품이 부족할 경우 전체 상품 상위 4개를 추천으로 제공
-    final displayProducts = products.isNotEmpty ? products : allProducts.take(4).toList();
+    final displayProducts = products;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -367,55 +481,70 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
     );
   }
 
+  void _navigateToCategoryProducts({required String name, int? categoryNo}) {
+    final query = <String, String>{'name': name};
+    if (categoryNo != null && categoryNo > 0) {
+      query['no'] = categoryNo.toString();
+    }
+    final uri = Uri(path: '/category/products', queryParameters: query);
+    context.push(uri.toString());
+  }
+
   Widget _buildCategoryBanner(_MainCategoryData cat) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: cat.bannerColor,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: cat.bannerColor.withValues(alpha: 0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
+    return GestureDetector(
+      onTap: () => _navigateToCategoryProducts(
+        name: cat.name,
+        categoryNo: cat.categoryNo,
       ),
-      child: Stack(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                cat.bannerTitle,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                cat.bannerSub,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Icon(
-              cat.icon,
-              size: 54,
-              color: Colors.white.withValues(alpha: 0.2),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: cat.bannerColor,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: cat.bannerColor.withValues(alpha: 0.25),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  cat.bannerTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  cat.bannerSub,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Icon(
+                cat.icon,
+                size: 54,
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -425,19 +554,30 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       spacing: 6,
       runSpacing: 6,
       children: tags.map((tag) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: AppTheme.chipBackground,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.border),
-          ),
-          child: Text(
-            tag,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppTheme.primary,
-              fontWeight: FontWeight.w600,
+        final cleanTag = tag.replaceAll('#', '').trim();
+        final isSelected = _selectedSubCategoryName == cleanTag;
+
+        return GestureDetector(
+          onTap: () {
+            _navigateToCategoryProducts(name: cleanTag);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: isSelected ? AppTheme.primary : AppTheme.chipBackground,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected ? AppTheme.primary : AppTheme.border,
+              ),
+            ),
+            child: Text(
+              tag,
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected ? Colors.white : AppTheme.primary,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+              ),
             ),
           ),
         );
@@ -462,13 +602,10 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
 
         return GestureDetector(
           onTap: () {
-            setState(() {
-              if (_selectedSubCategoryName == sub.name) {
-                _selectedSubCategoryName = null;
-              } else {
-                _selectedSubCategoryName = sub.name;
-              }
-            });
+            _navigateToCategoryProducts(
+              name: sub.name,
+              categoryNo: sub.id,
+            );
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
@@ -568,15 +705,47 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        product.name,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primary,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          if (product.tag == 'NEW' || product.isNew)
+                            Container(
+                              margin: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF16A34A),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Text(
+                                'NEW',
+                                style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            )
+                          else if (product.tag == 'BEST' || product.isRecommend)
+                            Container(
+                              margin: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: const Text(
+                                'BEST',
+                                style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          Expanded(
+                            child: Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primary,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       Row(
@@ -617,6 +786,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
 
 class _MainCategoryData {
   final String id;
+  final int? categoryNo;
   final String name;
   final IconData icon;
   final String bannerTitle;
@@ -627,6 +797,7 @@ class _MainCategoryData {
 
   _MainCategoryData({
     required this.id,
+    this.categoryNo,
     required this.name,
     required this.icon,
     required this.bannerTitle,
@@ -638,11 +809,13 @@ class _MainCategoryData {
 }
 
 class _SubCategoryData {
+  final int? id;
   final String name;
   final IconData icon;
   final int count;
 
   _SubCategoryData({
+    this.id,
     required this.name,
     required this.icon,
     required this.count,

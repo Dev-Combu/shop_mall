@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/user.dart';
 import 'package:shopmall/viewmodels/auth_viewmodel.dart';
@@ -30,7 +31,11 @@ class MyPage extends ConsumerWidget {
         actions: [
           TextButton.icon(
             onPressed: () {
-              ref.read(authProvider.notifier).toggleAuth();
+              if (isLoggedIn) {
+                _showLogoutDialog(context, ref);
+              } else {
+                context.push('/login');
+              }
             },
             icon: Icon(
               isLoggedIn ? Icons.logout : Icons.login,
@@ -38,7 +43,7 @@ class MyPage extends ConsumerWidget {
               color: AppTheme.primary,
             ),
             label: Text(
-              isLoggedIn ? '로그아웃 토글' : '로그인 토글',
+              isLoggedIn ? '로그아웃' : '로그인',
               style: const TextStyle(
                 fontSize: 12,
                 color: AppTheme.primary,
@@ -59,13 +64,30 @@ class MyPage extends ConsumerWidget {
                   ? _buildLoggedInHeader(context, ref, user)
                   : _buildLoggedOutHeader(context, ref),
             ),
-            const SizedBox(height: 16),
             if (isLoggedIn) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _buildQuickMenuGrid(context),
               ),
               const SizedBox(height: 16),
+              _buildSettingSection(
+                title: '내 정보 및 계정 관리',
+                items: [
+                  _SettingItem(
+                    icon: Icons.account_circle_outlined,
+                    title: '회원 정보 확인',
+                    subtitle: '아이디, 이름, 연락처 및 Cafe24 연동 상태',
+                    onTap: () => context.push('/profile'),
+                  ),
+                  _SettingItem(
+                    icon: Icons.person_remove_outlined,
+                    title: '회원탈퇴',
+                    subtitle: '수지씨앤엘 쇼핑몰 계정 영구 삭제',
+                    onTap: () => context.push('/withdrawal'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
             ],
             _buildSettingSection(
               title: '주문 및 배송 관리',
@@ -186,75 +208,79 @@ class MyPage extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppTheme.chipBackground,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.border, width: 1.5),
+          InkWell(
+            onTap: () => context.push('/profile'),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: AppTheme.chipBackground,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.border, width: 1.5),
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      size: 36,
+                      color: AppTheme.primary,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.person,
-                    size: 36,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            user.name,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.chipBackground,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'VIP 회원',
-                              style: TextStyle(
-                                color: AppTheme.primary,
-                                fontSize: 11,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              user.name,
+                              style: const TextStyle(
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
+                                color: AppTheme.primary,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        user.email,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF64748B),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.chipBackground,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                user.groupName,
+                                style: const TextStyle(
+                                  color: AppTheme.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          'ID: ${user.id} · ${user.email}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.settings_outlined, color: Color(0xFF64748B)),
-                  tooltip: '회원정보 수정',
-                ),
-              ],
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 24,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
@@ -317,7 +343,7 @@ class MyPage extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            '로그인하고 쿠폰, 포인트 등 다양한 혜택과\n편리한 쇼핑 서비스를 이용해 보세요.',
+            '수지씨앤엘 Cafe24 회원으로 로그인하고\n적립금, 쿠폰, 실시간 주문 내역을 확인해 보세요.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
@@ -331,7 +357,7 @@ class MyPage extends ConsumerWidget {
             height: 46,
             child: ElevatedButton(
               onPressed: () {
-                ref.read(authProvider.notifier).login();
+                context.push('/login');
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
@@ -578,7 +604,7 @@ class MyPage extends ConsumerWidget {
               height: 44,
               child: OutlinedButton.icon(
                 onPressed: () {
-                  ref.read(authProvider.notifier).logout();
+                  _showLogoutDialog(context, ref);
                 },
                 icon: const Icon(Icons.logout, size: 18, color: Color(0xFF64748B)),
                 label: const Text(
@@ -598,6 +624,61 @@ class MyPage extends ConsumerWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          '로그아웃',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.primary,
+          ),
+        ),
+        content: const Text(
+          '수지씨앤엘 계정에서 로그아웃하시겠습니까?',
+          style: TextStyle(fontSize: 14, color: Color(0xFF475569)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text(
+              '취소',
+              style: TextStyle(color: Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('안전하게 로그아웃되었습니다.'),
+                    backgroundColor: AppTheme.primary,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('로그아웃'),
+          ),
         ],
       ),
     );
