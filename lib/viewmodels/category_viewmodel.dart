@@ -3,6 +3,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shopmall/models/category.dart';
 import 'package:shopmall/services/cafe24_api_service.dart';
 
+/// 외부(홈 화면 등)에서 특정 카테고리나 필터(예: '신상품', '베스트', '롤매트')를 선택하여 진입할 때 사용하는 Notifier
+class SelectedCategoryFilterNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void setFilter(String? filter) {
+    state = filter;
+  }
+
+  void clear() {
+    state = null;
+  }
+}
+
+final selectedCategoryFilterProvider =
+    NotifierProvider<SelectedCategoryFilterNotifier, String?>(
+  SelectedCategoryFilterNotifier.new,
+);
+
 /// 앱 기본 Fallback 카테고리 목록
 final defaultCategories = [
   const ShopCategory(id: 24, name: '전체보기', depth: 1, icon: Icons.grid_view_rounded),
@@ -18,7 +37,7 @@ final defaultCategories = [
 final allCategoriesProvider = FutureProvider<List<ShopCategory>>((ref) async {
   final api = ref.watch(cafe24ApiServiceProvider);
 
-  if (api.accessToken.isEmpty && api.refreshToken.isEmpty) {
+  if (!api.hasCredentials) {
     return defaultCategories;
   }
 

@@ -16,14 +16,22 @@ class ScaffoldShellLayout extends ConsumerWidget {
   static const List<_NavItem> _navItems = [
     _NavItem(label: '홈',       icon: Icons.home_outlined,     activeIcon: Icons.home,           path: '/'),
     _NavItem(label: '카테고리', icon: Icons.category_outlined,  activeIcon: Icons.category,       path: '/category'),
-    _NavItem(label: '검색',     icon: Icons.search_outlined,    activeIcon: Icons.search,         path: '/search'),
     _NavItem(label: '장바구니', icon: Icons.shopping_cart_outlined, activeIcon: Icons.shopping_cart, path: '/cart'),
     _NavItem(label: '마이페이지', icon: Icons.person_outline,   activeIcon: Icons.person,         path: '/mypage'),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentIndex = ref.watch(bottomNavProvider);
+    ref.listen<int>(bottomNavProvider, (previous, next) {
+      if (next != navigationShell.currentIndex) {
+        navigationShell.goBranch(
+          next,
+          initialLocation: next == navigationShell.currentIndex,
+        );
+      }
+    });
+
+    final currentIndex = navigationShell.currentIndex;
 
     return Scaffold(
       body: navigationShell,

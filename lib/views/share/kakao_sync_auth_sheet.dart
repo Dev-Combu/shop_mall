@@ -113,9 +113,15 @@ class _KakaoSyncAuthSheetState extends State<KakaoSyncAuthSheet> {
             }
 
             // 2. 최초 Cafe24 로그인 페이지 로드 완료 시 카카오싱크 실행
-            if (!_hasTriggeredKakaoSync && url.contains('/member/login.html')) {
-              _hasTriggeredKakaoSync = true;
-              _triggerCafe24KakaoSync();
+            if (url.contains('/member/login.html')) {
+              if (!_hasTriggeredKakaoSync) {
+                _hasTriggeredKakaoSync = true;
+                _triggerCafe24KakaoSync();
+              } else if (mounted && !_showWebView) {
+                setState(() {
+                  _showWebView = true;
+                });
+              }
               return;
             }
 
@@ -152,26 +158,88 @@ class _KakaoSyncAuthSheetState extends State<KakaoSyncAuthSheet> {
   Future<void> _triggerCafe24KakaoSync() async {
     await _controller.runJavaScript('''
       (function() {
-        try {
-          if (typeof MemberAction !== 'undefined' && typeof MemberAction.kakaosyncLogin === 'function') {
-            MemberAction.kakaosyncLogin('$_kakaoJsKey');
-          } else {
-            var kakaoBtn = document.querySelector('.btnKakao, [onclick*="kakaosyncLogin"]');
-            if (kakaoBtn) {
-              kakaoBtn.click();
-            } else {
-              Cafe24KakaoBridge.postMessage(JSON.stringify({
-                type: 'error',
-                message: '카카오싱크 모듈을 불러오지 못했습니다. 다시 시도해주세요.'
-              }));
+        var attempts = 0;
+        var maxAttempts = 25; // 25회 * 150ms = 약 3.75초 동안 비동기 스크립트/DOM 로딩 대기
+
+        function tryTrigger() {
+          attempts++;
+          try {
+            // 1. Cafe24 공식 카카오싱크 메서드 시도
+            if (typeof MemberAction !== 'undefined' && typeof MemberAction.kakaosyncLogin === 'function') {
+              MemberAction.kakaosyncLogin('$_kakaoJsKey');
+              return true;
             }
+
+            // 2. Cafe24 일반 SNS 카카오 로그인 메서드 시도
+            if (typeof MemberAction !== 'undefined' && typeof MemberAction.snsLogin === 'function') {
+              MemberAction.snsLogin('kakao', '%2Fmyshop%2Findex.html');
+              return true;
+            }
+
+            // 3. 다양한 셀렉터로 카카오 로그인 버튼 탐색
+            var selectors = [
+              '[onclick*="kakaosyncLogin"]',
+              '[onclick*="snsLogin(\\'kakao\\'"]',
+              '[onclick*="snsLogin(\\"kakao\\""]',
+              '[onclick*="kakaosync"]',
+              '.btnKakao',
+              '.btnKakaoSync',
+              '.btn-kakao',
+              'a.kakao',
+              'a[href*="/kakao"]',
+              'a[href*="kauth.kakao.com"]',
+              'a[href*="kakaosync"]'
+            ];
+
+            for (var i = 0; i < selectors.length; i++) {
+              var el = document.querySelector(selectors[i]);
+              if (el) {
+                el.click();
+                return true;
+              }
+            }
+
+            // 4. 이미지(img) alt/src 기반 카카오 버튼 탐색
+            var kakaoImgs = document.querySelectorAll('img[alt*="카카오"], img[src*="kakao"]');
+            if (kakaoImgs.length > 0) {
+              var btn = kakaoImgs[0].closest('a, button') || kakaoImgs[0];
+              btn.click();
+              return true;
+            }
+
+            // 5. 텍스트 내용 기반 탐색
+            var allLinks = document.querySelectorAll('a, button');
+            for (var j = 0; j < allLinks.length; j++) {
+              var item = allLinks[j];
+              var text = (item.innerText || '').trim();
+              var onclickAttr = (item.getAttribute('onclick') || '').toLowerCase();
+              if (text.indexOf('카카오') !== -1 || onclickAttr.indexOf('kakao') !== -1) {
+                item.click();
+                return true;
+              }
+            }
+          } catch (e) {
+            console.error('[KakaoSync] tryTrigger error: ' + e);
           }
-        } catch (e) {
-          Cafe24KakaoBridge.postMessage(JSON.stringify({
-            type: 'error',
-            message: String(e)
-          }));
+          return false;
         }
+
+        // 최초 1회 즉시 시도
+        if (tryTrigger()) return;
+
+        // 즉시 탐색 실패 시 비동기 스크립트 실행을 대기하며 폴링 수행
+        var timer = setInterval(function() {
+          if (tryTrigger()) {
+            clearInterval(timer);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(timer);
+            // 3.75초 후에도 자동 트리거를 찾지 못한 경우 모달을 닫지 않고 웹뷰를 노출해 사용자가 직접 클릭하도록 fallback!
+            Cafe24KakaoBridge.postMessage(JSON.stringify({
+              type: 'show_webview_fallback',
+              message: '카카오 로그인 버튼을 확인하고 있습니다.'
+            }));
+          }
+        }, 150);
       })();
     ''');
   }
@@ -352,6 +420,14 @@ class _KakaoSyncAuthSheetState extends State<KakaoSyncAuthSheet> {
 
       if (type == 'error') {
         final msg = data['message']?.toString() ?? '카카오 로그인 중 오류가 발생했습니다.';
+        // 모듈 로딩 지연 등으로 발생한 경고는 모달을 닫지 않고 웹뷰를 노출하여 사용자가 진행할 수 있게 함
+        if (msg.contains('모듈') || msg.contains('불러오지')) {
+          setState(() {
+            _showWebView = true;
+            _statusMessage = '카카오 로그인 버튼을 직접 터치해주세요.';
+          });
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
@@ -360,6 +436,11 @@ class _KakaoSyncAuthSheetState extends State<KakaoSyncAuthSheet> {
           ),
         );
         Navigator.of(context).pop();
+      } else if (type == 'show_webview_fallback') {
+        setState(() {
+          _showWebView = true;
+          _statusMessage = '카카오 로그인 버튼을 직접 터치해주세요.';
+        });
       } else if (type == 'logged_in_confirmed') {
         // 실제로 Cafe24 로그인 세션(iscache=F / IS_LOGIN)이 확인된 경우에만 마이쇼핑으로 이동하여 프로필 추출
         setState(() {

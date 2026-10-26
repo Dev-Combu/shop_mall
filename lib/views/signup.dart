@@ -8,6 +8,7 @@ import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/user.dart';
 import 'package:shopmall/viewmodels/auth_viewmodel.dart';
 import 'package:shopmall/views/share/kakao_sync_auth_sheet.dart';
+import 'package:shopmall/views/share/naver_auth_sheet.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class SignUpPage extends ConsumerStatefulWidget {
@@ -409,6 +410,27 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
     context.go('/mypage');
   }
 
+  Future<void> _handleNaverSignUp() async {
+    setState(() {
+      _errorMessage = null;
+    });
+
+    final naverUser = await NaverAuthSheet.show(context);
+    if (naverUser == null || !mounted) return;
+
+    await ref.read(authProvider.notifier).setAuthenticatedUser(naverUser);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('네이버 계정(${naverUser.name})으로 간편 가입 및 로그인되었습니다!'),
+        backgroundColor: AppTheme.primary,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    context.go('/mypage');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -475,6 +497,44 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFEE500),
                           foregroundColor: const Color(0xFF191919),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // 네이버(Naver) 간편 회원가입 버튼
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSubmitting ? null : _handleNaverSignUp,
+                        icon: Container(
+                          width: 19,
+                          height: 19,
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'N',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                        label: const Text(
+                          '네이버로 간편 회원가입',
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF03C75A),
+                          foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
