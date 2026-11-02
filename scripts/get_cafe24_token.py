@@ -106,11 +106,12 @@ def main():
         hashlib.sha256(code_verifier.encode('utf-8')).digest()
     ).decode('utf-8').rstrip('=')
 
-    # Step 1: 인가 URL 생성 (PKCE 포함)
+    # Step 1: 인가 URL 생성 (PKCE 및 scope 포함)
     auth_params = {
         "response_type": "code",
         "client_id": client_id,
         "redirect_uri": redirect_uri,
+        "scope": scopes,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }

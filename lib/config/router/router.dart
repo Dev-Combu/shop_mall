@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shopmall/models/order.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/views/cart.dart';
 import 'package:shopmall/views/category.dart';
 import 'package:shopmall/views/category_products.dart';
+import 'package:shopmall/views/checkout.dart';
 import 'package:shopmall/views/home.dart';
 import 'package:shopmall/views/login.dart';
 import 'package:shopmall/views/my_page.dart';
+import 'package:shopmall/views/order_detail.dart';
+import 'package:shopmall/views/orders.dart';
 import 'package:shopmall/views/product.dart';
 import 'package:shopmall/views/profile.dart';
 import 'package:shopmall/views/share/scaffold_shell_layout.dart';
@@ -108,6 +112,28 @@ final router = GoRouter(
         final productId = state.pathParameters['id']!;
         final product = state.extra as Product?;
         return ProductPage(productId: productId, initialProduct: product);
+      },
+    ),
+    GoRoute(
+      path: '/checkout',
+      name: 'checkout',
+      builder: (context, state) {
+        final args = state.extra as CheckoutArgs? ??
+            const CheckoutArgs(items: [], fromCart: false);
+        return CheckoutPage(args: args);
+      },
+    ),
+    GoRoute(
+      path: '/orders',
+      name: 'orders',
+      builder: (context, state) => const OrdersPage(),
+    ),
+    GoRoute(
+      path: '/orders/:id',
+      name: 'order-detail',
+      builder: (context, state) {
+        final orderId = state.pathParameters['id']!;
+        return OrderDetailPage(orderId: orderId);
       },
     ),
     GoRoute(

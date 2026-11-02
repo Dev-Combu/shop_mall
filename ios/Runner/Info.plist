@@ -56,6 +56,47 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>kakaotalk</string>
+		<string>kakaopay</string>
+		<string>kakaotalk-5.9.7</string>
+		<string>ispmobile</string>
+		<string>shinhan-sr-ansimclick</string>
+		<string>smshinhanansimclick</string>
+		<string>smhyundailcardansimclick</string>
+		<string>hdcardappcardansimclick</string>
+		<string>mpocket.online.ansimclick</string>
+		<string>ansimclickscard</string>
+		<string>kb-acp</string>
+		<string>liivbank</string>
+		<string>newliiv</string>
+		<string>lotteappcard</string>
+		<string>lpayapp</string>
+		<string>nhappcardansimclick</string>
+		<string>nhallonepayansimclick</string>
+		<string>nonghyupcardansimclick</string>
+		<string>hanawalletmembers</string>
+		<string>cloudpay</string>
+		<string>hanaskcardmobilepayment</string>
+		<string>payco</string>
+		<string>supertoss</string>
+		<string>kftc-bankpay</string>
+		<string>bankpay</string>
+		<string>vguardend</string>
+		<string>tauthlink</string>
+		<string>ktauthexternalcall</string>
+		<string>upluscorporation</string>
+		<string>naversearchapp</string>
+		<string>naversearchthirdlogin</string>
+		<string>nidlogin</string>
+		<string>wcardusertoken</string>
+		<string>wooripay</string>
+		<string>citimobileapp</string>
+		<string>citispay</string>
+		<string>shinsegaeeasypayment</string>
+		<string>chaipayment</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

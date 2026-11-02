@@ -2,10 +2,13 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shopmall/models/cart_item.dart';
 import 'package:shopmall/models/category.dart';
+import 'package:shopmall/models/order.dart';
 import 'package:shopmall/models/product.dart';
 
 /// Cafe24ApiService Riverpod 전역 Provider
@@ -47,6 +50,7 @@ class Cafe24ApiService {
   DateTime? _expiresAt;
 
   bool _isInitialized = false;
+  bool _refreshFailedPermanently = false;
   Future<void>? _initFuture;
   Future<bool>? _refreshFuture;
 
@@ -88,10 +92,15 @@ class Cafe24ApiService {
   /// 만료 없는 Front API 사용 가능 여부 (Client ID + Front API Key 존재 시 true)
   bool get hasFrontApiKey => clientId.isNotEmpty && frontApiKey.isNotEmpty;
 
+  /// 유효한 Admin OAuth 토큰 보유 여부 (만료 및 영구 실패 시 false)
+  bool get hasAdminCredentials =>
+      mallId.isNotEmpty &&
+      !_refreshFailedPermanently &&
+      (accessToken.isNotEmpty || refreshToken.isNotEmpty);
+
   /// 유효한 인증 자격증명(Front API 키 또는 OAuth 토큰)이 있는지 여부
   bool get hasCredentials =>
-      mallId.isNotEmpty &&
-      (hasFrontApiKey || accessToken.isNotEmpty || refreshToken.isNotEmpty);
+      mallId.isNotEmpty && (hasFrontApiKey || hasAdminCredentials);
 
   String get accessToken =>
       (_accessToken != null && _accessToken!.isNotEmpty)
@@ -164,7 +173,7 @@ class Cafe24ApiService {
     await _ensureInitialized();
     _validateCredentials();
 
-    if (_isTokenExpired && refreshToken.isNotEmpty) {
+    if (_isTokenExpired && refreshToken.isNotEmpty && !_refreshFailedPermanently) {
       debugPrint('[Cafe24ApiService] 토큰 만료 시간이 도래하여 선제적 리프레시를 수행합니다.');
       await refreshAccessToken();
     }
@@ -182,6 +191,9 @@ class Cafe24ApiService {
   }
 
   Future<bool> _performTokenRefresh() async {
+    if (_refreshFailedPermanently) {
+      return false;
+    }
     await _ensureInitialized();
     final currentRefresh = refreshToken;
     if (mallId.isEmpty || currentRefresh.isEmpty) {
@@ -266,49 +278,60 @@ class Cafe24ApiService {
       }
     }
 
+    _refreshFailedPermanently = true;
     return false;
   }
 
-  /// 401 만료 에러 발생 시 자동으로 토큰 리프레시 후 1회 재요청하는 공통 GET 헬퍼
-  Future<Response<dynamic>> _getWithAutoRefresh(
+  /// 401 만료 에러 발생 시 자동으로 토큰 리프레시 후 1회 재요청하는 공통 요청 헬퍼
+  Future<Response<dynamic>> _requestWithAutoRefresh(
+    String method,
     String url, {
     Map<String, dynamic>? queryParameters,
+    dynamic data,
   }) async {
     await _ensureValidToken();
 
-    try {
-      return await _dio.get(
-        url,
-        queryParameters: queryParameters,
-        options: Options(
+    Options buildOptions() => Options(
+          method: method,
           headers: {
             'Authorization': 'Bearer $accessToken',
             'Content-Type': 'application/json',
             'X-Cafe24-Api-Version': '2026-09-01',
           },
-        ),
+        );
+
+    try {
+      return await _dio.request(
+        url,
+        data: data,
+        queryParameters: queryParameters,
+        options: buildOptions(),
       );
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401 && refreshToken.isNotEmpty) {
+      if (e.response?.statusCode == 401 &&
+          refreshToken.isNotEmpty &&
+          !_refreshFailedPermanently) {
         debugPrint('[Cafe24ApiService] 401 응답 감지 -> 토큰 자동 리프레시 후 재요청합니다.');
         final refreshed = await refreshAccessToken();
         if (refreshed) {
-          return await _dio.get(
+          return await _dio.request(
             url,
+            data: data,
             queryParameters: queryParameters,
-            options: Options(
-              headers: {
-                'Authorization': 'Bearer $accessToken',
-                'Content-Type': 'application/json',
-                'X-Cafe24-Api-Version': '2026-09-01',
-              },
-            ),
+            options: buildOptions(),
           );
         }
       }
       rethrow;
     }
   }
+
+  /// 401 만료 에러 발생 시 자동으로 토큰 리프레시 후 1회 재요청하는 공통 GET 헬퍼
+  Future<Response<dynamic>> _getWithAutoRefresh(
+    String url, {
+    Map<String, dynamic>? queryParameters,
+  }) =>
+      _requestWithAutoRefresh('GET', url, queryParameters: queryParameters);
 
   /// Front API 전용 Basic Auth 헤더 생성 (Client_ID:Front_Api_Key Base64 인코딩)
   Map<String, String> _buildFrontApiHeaders() {
@@ -647,6 +670,645 @@ class Cafe24ApiService {
     }
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Cafe24 회원 장바구니 DB 연동 API (mall.read_personal, mall.write_personal 스코프)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// 상품의 대표 품목 코드(variant_code) 조회 (Front API 또는 Admin API)
+  Future<String?> getProductDefaultVariantCode(String productNo) async {
+    try {
+      Response<dynamic> resp;
+      if (hasFrontApiKey) {
+        resp = await _getFrontApi('products/$productNo/variants');
+      } else {
+        resp = await _getWithAutoRefresh(
+          'https://$mallId.cafe24api.com/api/v2/admin/products/$productNo/variants',
+        );
+      }
+      if (resp.statusCode == 200 && resp.data is Map<String, dynamic>) {
+        final variants = (resp.data as Map<String, dynamic>)['variants'];
+        if (variants is List && variants.isNotEmpty) {
+          final first = variants.first;
+          if (first is Map<String, dynamic>) {
+            return first['variant_code']?.toString();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 상품($productNo) variants 조회 실패: $e');
+    }
+    return null;
+  }
+
+  /// Cafe24 서버에서 회원 장바구니 목록 조회 (mall.read_personal 스코프)
+  /// Endpoint: GET https://$mallId.cafe24api.com/api/v2/admin/carts?member_id={member_id}
+  Future<List<CartItem>> fetchMemberCart(String memberId) async {
+    if (memberId.trim().isEmpty || !hasAdminCredentials) {
+      return [];
+    }
+
+    try {
+      final url = 'https://$mallId.cafe24api.com/api/v2/admin/carts';
+      final response = await _getWithAutoRefresh(
+        url,
+        queryParameters: {'member_id': memberId.trim()},
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final rawCarts = data['carts'];
+        if (rawCarts is List && rawCarts.isNotEmpty) {
+          final List<String> productNos = [];
+          final List<Map<String, dynamic>> cartRecords = [];
+
+          for (final item in rawCarts) {
+            if (item is Map<String, dynamic>) {
+              final pNo = item['product_no']?.toString() ?? '';
+              if (pNo.isNotEmpty) {
+                productNos.add(pNo);
+                cartRecords.add(item);
+              }
+            }
+          }
+
+          // 상품 이미지 및 상세 정보 일괄 조회
+          final Map<String, Product> productMap = {};
+          if (productNos.isNotEmpty) {
+            try {
+              final uniqueNos = productNos.toSet().join(',');
+              final detailResp = hasFrontApiKey
+                  ? await _getFrontApi('products', queryParameters: {'product_no': uniqueNos, 'limit': 100})
+                  : await _getWithAutoRefresh(
+                      'https://$mallId.cafe24api.com/api/v2/admin/products',
+                      queryParameters: {'product_no': uniqueNos, 'limit': 100},
+                    );
+              if (detailResp.statusCode == 200 && detailResp.data is Map<String, dynamic>) {
+                final rawProducts = (detailResp.data as Map<String, dynamic>)['products'];
+                if (rawProducts is List) {
+                  for (final pJson in rawProducts) {
+                    if (pJson is Map<String, dynamic>) {
+                      final p = Product.fromCafe24Json(pJson);
+                      productMap[p.id] = p;
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('[Cafe24ApiService] 장바구니 상품 상세 보강 실패: $e');
+            }
+          }
+
+          final List<CartItem> items = [];
+          for (final record in cartRecords) {
+            final pNo = record['product_no']?.toString() ?? '';
+            final qty = int.tryParse(record['quantity']?.toString() ?? '1') ?? 1;
+            final basketNo = int.tryParse(record['basket_product_no']?.toString() ?? '');
+            final optionId = record['option_id']?.toString();
+
+            final product = productMap[pNo] ?? Product.fromCafe24Json(record);
+            items.add(
+              CartItem(
+                product: product,
+                quantity: qty,
+                isSelected: true,
+                basketProductNo: basketNo,
+                optionId: optionId,
+              ),
+            );
+          }
+          return items;
+        }
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 회원($memberId) 장바구니 조회 경고: $e');
+    }
+    return [];
+  }
+
+  /// Cafe24 서버 회원 장바구니에 상품 추가 (mall.write_personal 스코프)
+  /// Front API Key(Basic Auth) 또는 Admin OAuth Token을 사용하여
+  /// POST https://$mallId.cafe24api.com/api/v2/carts 호출
+  Future<bool> addMemberCartItem({
+    required String memberId,
+    required String productNo,
+    required int quantity,
+    String? optionId,
+    String? variantCode,
+  }) async {
+    final pNoInt = int.tryParse(productNo);
+    if (pNoInt == null) return false;
+
+    try {
+      String resolvedVariantCode = variantCode ?? '';
+      if (resolvedVariantCode.isEmpty) {
+        resolvedVariantCode = await getProductDefaultVariantCode(productNo) ?? '';
+      }
+      if (resolvedVariantCode.isEmpty) {
+        debugPrint('[Cafe24ApiService] 상품($productNo) 품목 코드(variant_code)를 찾을 수 없습니다.');
+        return false;
+      }
+
+      final payload = {
+        'shop_no': 1,
+        'request': {
+          'duplicated_item_check': 'T',
+          'product_no': pNoInt,
+          'basket_type': 'A0000',
+          'prepaid_shipping_fee': 'P',
+          'variants': [
+            {
+              'quantity': quantity,
+              'variants_code': resolvedVariantCode,
+              if (optionId != null && optionId.isNotEmpty) 'options': [{'option_code': optionId}],
+            },
+          ],
+        },
+      };
+
+      Response<dynamic> response;
+      if (hasFrontApiKey) {
+        final url = 'https://$mallId.cafe24api.com/api/v2/carts';
+        response = await _dio.post(
+          url,
+          data: payload,
+          options: Options(headers: _buildFrontApiHeaders()),
+        );
+      } else {
+        final url = 'https://$mallId.cafe24api.com/api/v2/carts';
+        response = await _requestWithAutoRefresh('POST', url, data: payload);
+      }
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 회원($memberId) 장바구니 추가 경고: $e');
+      return false;
+    }
+  }
+
+  /// Cafe24 서버 회원 장바구니 상품 수량 변경
+  Future<bool> updateMemberCartQuantity({
+    required String memberId,
+    required String productNo,
+    required int quantity,
+    int? basketProductNo,
+    String? optionId,
+  }) async {
+    // Cafe24 REST API는 Front API 장바구니 재등록 또는 WebView Basket 세션을 통해 수량을 동기화합니다.
+    return addMemberCartItem(
+      memberId: memberId,
+      productNo: productNo,
+      quantity: quantity,
+      optionId: optionId,
+    );
+  }
+
+  /// Cafe24 서버 회원 장바구니 상품 삭제
+  Future<bool> deleteMemberCartItem({
+    required String memberId,
+    required String productNo,
+    int? basketProductNo,
+    String? optionId,
+  }) async {
+    return true;
+  }
+
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Cafe24 회원 기본 정보 및 배송지 주소록 DB 연동 API
+  // (/api/v2/admin/customers, /api/v2/admin/customers/{member_id}/shippingaddresses)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  bool _isValidPhoneStr(String? raw) {
+    if (raw == null) return false;
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.length >= 9 && digits.length <= 11;
+  }
+
+  /// Cafe24 서버에서 회원의 기본 정보 및 배송지 주소(우편번호, 기본주소, 상세주소) 조회
+  Future<({String? zipCode, String? address1, String? address2, String? phone, String? name, String? email})?>
+      fetchCustomerAddressInfo(String memberId) async {
+    if (memberId.trim().isEmpty || !hasAdminCredentials) {
+      return null;
+    }
+
+    String? zip;
+    String? addr1;
+    String? addr2;
+    String? phone;
+    String? name;
+    String? email;
+
+    // 1. 회원 배송지 주소록(/shippingaddresses)에서 기본 배송지 우선 조회
+    try {
+      final encodedMemberId = Uri.encodeComponent(memberId.trim());
+      final shippingUrl =
+          'https://$mallId.cafe24api.com/api/v2/admin/customers/$encodedMemberId/shippingaddresses';
+      final shippingResp = await _getWithAutoRefresh(shippingUrl);
+      if (shippingResp.statusCode == 200 && shippingResp.data is Map<String, dynamic>) {
+        final list = (shippingResp.data as Map<String, dynamic>)['shippingaddresses'];
+        if (list is List && list.isNotEmpty) {
+          Map<String, dynamic>? targetAddr;
+          for (final item in list) {
+            if (item is Map<String, dynamic>) {
+              if (item['shipping_default'] == 'T' || item['default'] == 'T') {
+                targetAddr = item;
+                break;
+              }
+              targetAddr ??= item;
+            }
+          }
+          if (targetAddr != null) {
+            zip = targetAddr['receiver_zipcode']?.toString() ??
+                targetAddr['zipcode']?.toString();
+            addr1 = targetAddr['receiver_address1']?.toString() ??
+                targetAddr['address1']?.toString();
+            addr2 = targetAddr['receiver_address2']?.toString() ??
+                targetAddr['address2']?.toString();
+            final cellCandidate = targetAddr['receiver_cellphone']?.toString();
+            final phoneCandidate = targetAddr['receiver_phone']?.toString();
+            if (_isValidPhoneStr(cellCandidate)) {
+              phone = cellCandidate;
+            } else if (_isValidPhoneStr(phoneCandidate)) {
+              phone = phoneCandidate;
+            }
+            name = targetAddr['receiver_name']?.toString();
+          }
+        }
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        debugPrint(
+          '[Cafe24ApiService] 회원($memberId)은 소셜 계정이거나 배송지 주소록이 없습니다 (404). 로컬 정보를 사용합니다.',
+        );
+      } else {
+        debugPrint('[Cafe24ApiService] 회원($memberId) 배송지 주소록 조회 참고: ${e.message}');
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 회원($memberId) 배송지 주소록 조회 참고: $e');
+    }
+
+    // 2. 회원 기본 프로필(/customers?member_id=...)에서 주소 및 연락처 보강
+    try {
+      final customerUrl = 'https://$mallId.cafe24api.com/api/v2/admin/customers';
+      final custResp = await _getWithAutoRefresh(
+        customerUrl,
+        queryParameters: {'member_id': memberId},
+      );
+      if (custResp.statusCode == 200 && custResp.data is Map<String, dynamic>) {
+        final customers = (custResp.data as Map<String, dynamic>)['customers'];
+        if (customers is List && customers.isNotEmpty) {
+          final c = customers.first;
+          if (c is Map<String, dynamic>) {
+            zip = (zip != null && zip.trim().isNotEmpty)
+                ? zip
+                : (c['zipcode']?.toString() ?? c['postcode1']?.toString());
+            addr1 = (addr1 != null && addr1.trim().isNotEmpty)
+                ? addr1
+                : (c['address1']?.toString() ?? c['addr1']?.toString());
+            addr2 = (addr2 != null && addr2.trim().isNotEmpty)
+                ? addr2
+                : (c['address2']?.toString() ?? c['addr2']?.toString());
+            if (!_isValidPhoneStr(phone)) {
+              final cellCandidate = c['cellphone']?.toString();
+              final phoneCandidate = c['phone']?.toString();
+              if (_isValidPhoneStr(cellCandidate)) {
+                phone = cellCandidate;
+              } else if (_isValidPhoneStr(phoneCandidate)) {
+                phone = phoneCandidate;
+              }
+            }
+            name = (name != null && name.trim().isNotEmpty)
+                ? name
+                : c['name']?.toString();
+            email = c['email']?.toString();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 회원($memberId) 기본 프로필 조회 참고: $e');
+    }
+
+    if ((zip != null && zip.isNotEmpty) ||
+        (addr1 != null && addr1.isNotEmpty) ||
+        (phone != null && phone.isNotEmpty)) {
+      return (
+        zipCode: zip?.trim(),
+        address1: addr1?.trim(),
+        address2: addr2?.trim(),
+        phone: phone?.trim(),
+        name: name?.trim(),
+        email: email?.trim(),
+      );
+    }
+    return null;
+  }
+
+  /// Cafe24 서버에 회원의 기본 배송지 주소록 등록/수정 연동
+  /// (`/api/v2/admin/customers/{member_id}/shippingaddresses`)
+  Future<bool> upsertCustomerShippingAddress({
+    required String memberId,
+    required String recipientName,
+    required String phone,
+    required String zipCode,
+    required String address1,
+    required String address2,
+  }) async {
+    if (memberId.trim().isEmpty || !hasAdminCredentials) {
+      return false;
+    }
+
+    try {
+      final encodedMemberId = Uri.encodeComponent(memberId.trim());
+      final baseUrl =
+          'https://$mallId.cafe24api.com/api/v2/admin/customers/$encodedMemberId/shippingaddresses';
+
+      // 1. 기존 등록된 배송지 주소록이 있는지 확인
+      int? existingAddressNo;
+      try {
+        final getResp = await _getWithAutoRefresh(baseUrl);
+        if (getResp.statusCode == 200 && getResp.data is Map<String, dynamic>) {
+          final list = (getResp.data as Map<String, dynamic>)['shippingaddresses'];
+          if (list is List && list.isNotEmpty) {
+            for (final item in list) {
+              if (item is Map<String, dynamic>) {
+                final no = int.tryParse(item['shipping_address_no']?.toString() ?? '');
+                if (item['shipping_default'] == 'T' || item['default'] == 'T') {
+                  existingAddressNo = no;
+                  break;
+                }
+                existingAddressNo ??= no;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      final requestPayload = {
+        'shop_no': 1,
+        'request': {
+          'shipping_place_name': '기본배송지',
+          'receiver_name': recipientName,
+          'receiver_zipcode': zipCode,
+          'receiver_address1': address1,
+          'receiver_address2': address2,
+          'receiver_cellphone': phone,
+          'receiver_phone': phone,
+          'shipping_default': 'T',
+        },
+      };
+
+      // 2. 기존 배송지가 있으면 PUT 수정, 없으면 POST 신규 등록
+      if (existingAddressNo != null) {
+        final putResp = await _requestWithAutoRefresh(
+          'PUT',
+          '$baseUrl/$existingAddressNo',
+          data: requestPayload,
+        );
+        return putResp.statusCode == 200;
+      } else {
+        final postResp = await _requestWithAutoRefresh(
+          'POST',
+          baseUrl,
+          data: requestPayload,
+        );
+        return postResp.statusCode == 200 || postResp.statusCode == 201;
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        debugPrint(
+          '[Cafe24ApiService] 회원($memberId)은 소셜 계정(@k/@n)이거나 Cafe24 서버 주소록이 없습니다 (404). 앱 로컬 저장소를 사용합니다.',
+        );
+      } else {
+        debugPrint('[Cafe24ApiService] 회원($memberId) 배송지 주소록 서버 저장 참고: ${e.message}');
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 회원($memberId) 배송지 주소록 서버 저장 참고: $e');
+      return false;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Cafe24 주문 조회 API (/api/v2/admin/orders) - mall.read_order 권한 필요
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// 마지막 주문 조회 실패 사유 (권한 부족 등 UI 안내용)
+  String? lastOrderSyncError;
+
+  /// 회원의 최근 Cafe24 주문 목록 조회 (주문상품/수령자 정보 포함)
+  Future<List<OrderRecord>> fetchMemberOrders(
+    String memberId, {
+    int days = 90,
+  }) async {
+    lastOrderSyncError = null;
+    if (memberId.trim().isEmpty || !hasAdminCredentials) return const [];
+
+    String fmt(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+
+    try {
+      final response = await _getWithAutoRefresh(
+        'https://$mallId.cafe24api.com/api/v2/admin/orders',
+        queryParameters: {
+          'member_id': memberId,
+          'start_date': fmt(now.subtract(Duration(days: days))),
+          'end_date': fmt(now),
+          'embed': 'items,receivers',
+          'limit': 100,
+        },
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['orders'] is List) {
+        return (data['orders'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map(_parseCafe24Order)
+            .whereType<OrderRecord>()
+            .toList();
+      }
+    } on DioException catch (e) {
+      final err = _handleDioException(e);
+      lastOrderSyncError = err.statusCode == 403
+          ? 'Cafe24 주문 조회 권한(mall.read_order)이 없어 배송 상태를 불러올 수 없습니다.'
+          : err.message;
+      debugPrint('[Cafe24ApiService] 회원($memberId) 주문 조회 실패: $err');
+    } catch (e) {
+      lastOrderSyncError = '주문 조회 중 오류가 발생했습니다: $e';
+      debugPrint('[Cafe24ApiService] 회원($memberId) 주문 조회 실패: $e');
+    }
+    return const [];
+  }
+
+  /// 단일 Cafe24 주문 상세 조회
+  Future<OrderRecord?> fetchOrderDetail(String orderId) async {
+    if (orderId.trim().isEmpty || !hasAdminCredentials) return null;
+    try {
+      final response = await _getWithAutoRefresh(
+        'https://$mallId.cafe24api.com/api/v2/admin/orders/$orderId',
+        queryParameters: {'embed': 'items,receivers'},
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['order'] is Map<String, dynamic>) {
+        return _parseCafe24Order(data['order'] as Map<String, dynamic>);
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 주문($orderId) 상세 조회 실패: $e');
+    }
+    return null;
+  }
+
+  /// [mall.write_order] 주문 취소 신청 API
+  Future<bool> cancelOrder(String orderId, {String reason = '고객 직접 취소'}) async {
+    if (orderId.trim().isEmpty || !hasAdminCredentials) return false;
+    try {
+      final response = await _requestWithAutoRefresh(
+        'POST',
+        'https://$mallId.cafe24api.com/api/v2/admin/orders/$orderId/cancellation',
+        data: {
+          'request': {
+            'undelivered': 'T',
+            'reason': reason,
+          }
+        },
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 주문($orderId) 취소 신청 실패: $e');
+      return false;
+    }
+  }
+
+  /// [mall.read_shipping] 쇼핑몰 기본 배송비 설정 조회
+  Future<({int baseFee, int freeThreshold})?> fetchShippingSettings() async {
+    if (!hasAdminCredentials) return null;
+    try {
+      final response = await _getWithAutoRefresh(
+        'https://$mallId.cafe24api.com/api/v2/admin/shipping',
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['shipping'] is Map<String, dynamic>) {
+        final s = data['shipping'] as Map<String, dynamic>;
+        final fee = int.tryParse(s['shipping_fee']?.toString() ?? '3000') ?? 3000;
+        final free = int.tryParse(s['free_shipping_limit']?.toString() ?? '30000') ?? 30000;
+        return (baseFee: fee, freeThreshold: free);
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 배송 설정 조회 실패: $e');
+    }
+    return null;
+  }
+
+  /// [mall.read_community] 상품 후기/리뷰 게시글 목록 조회 (게시판 연동)
+  Future<List<Map<String, dynamic>>> fetchProductReviews(
+    String productNo, {
+    int boardNo = 4,
+    int limit = 10,
+  }) async {
+    if (!hasAdminCredentials || productNo.trim().isEmpty) return const [];
+    try {
+      final response = await _getWithAutoRefresh(
+        'https://$mallId.cafe24api.com/api/v2/admin/boards/$boardNo/articles',
+        queryParameters: {
+          'product_no': productNo,
+          'limit': limit,
+        },
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['articles'] is List) {
+        return (data['articles'] as List).whereType<Map<String, dynamic>>().toList();
+      }
+    } catch (e) {
+      debugPrint('[Cafe24ApiService] 상품($productNo) 리뷰 조회 실패: $e');
+    }
+    return const [];
+  }
+
+  /// Cafe24 주문 JSON -> OrderRecord 변환
+  OrderRecord? _parseCafe24Order(Map<String, dynamic> o) {
+    final orderId = o['order_id']?.toString() ?? '';
+    if (orderId.isEmpty) return null;
+
+    int toInt(dynamic v) => double.tryParse(v?.toString() ?? '')?.round() ?? 0;
+
+    final rawItems = (o['items'] is List)
+        ? (o['items'] as List).whereType<Map<String, dynamic>>().toList()
+        : <Map<String, dynamic>>[];
+
+    final items = rawItems.map((it) {
+      final price = toInt(it['product_price'] ?? it['price']);
+      return CartItem(
+        product: Product(
+          id: it['product_no']?.toString() ?? '',
+          name: it['product_name']?.toString() ?? '상품',
+          originalPrice: price,
+          tag: '',
+          tagColor: const Color(0xFF94A3B8),
+          category: '',
+        ),
+        quantity: toInt(it['quantity']).clamp(1, 9999),
+        optionId: it['option_value']?.toString(),
+      );
+    }).toList();
+
+    // 대표 배송상태: 송장이 있는 품목 우선, 없으면 첫 품목 기준
+    Map<String, dynamic>? statusItem;
+    for (final it in rawItems) {
+      if ((it['tracking_no']?.toString() ?? '').isNotEmpty) {
+        statusItem = it;
+        break;
+      }
+    }
+    statusItem ??= rawItems.isNotEmpty ? rawItems.first : null;
+
+    String? emptyToNull(dynamic v) {
+      final s = v?.toString().trim() ?? '';
+      return s.isEmpty ? null : s;
+    }
+
+    final receiver = (o['receivers'] is List && (o['receivers'] as List).isNotEmpty)
+        ? (o['receivers'] as List).first as Map<String, dynamic>
+        : <String, dynamic>{};
+
+    final zip = receiver['zipcode']?.toString() ?? '';
+    final addrFull = receiver['address_full']?.toString() ??
+        '${receiver['address1'] ?? ''} ${receiver['address2'] ?? ''}';
+
+    final payMethods = o['payment_method_name'];
+    final paymentLabel = payMethods is List
+        ? payMethods.map((e) => e.toString()).join(', ')
+        : (payMethods?.toString() ?? '');
+
+    final amount = o['actual_order_amount'];
+    final paid = amount is Map
+        ? toInt(amount['payment_amount'] ?? amount['order_price_amount'])
+        : toInt(o['payment_amount']);
+    final shippingFee = amount is Map ? toInt(amount['shipping_fee']) : 0;
+    final usedPoints = amount is Map ? toInt(amount['mileage_spent_amount']) : 0;
+
+    final isCancelled = o['canceled']?.toString() == 'T';
+
+    return OrderRecord(
+      orderId: orderId,
+      orderedAt: DateTime.tryParse(o['order_date']?.toString() ?? '') ?? DateTime.now(),
+      items: items,
+      recipientName: receiver['name']?.toString() ?? '',
+      recipientPhone: receiver['cellphone']?.toString() ??
+          receiver['phone']?.toString() ??
+          '',
+      address: '${zip.isNotEmpty ? '[$zip] ' : ''}${addrFull.trim()}',
+      deliveryMemo: receiver['shipping_message']?.toString() ?? '',
+      paymentMethod: paymentLabel.isNotEmpty ? paymentLabel : 'Cafe24 결제',
+      usedPoints: usedPoints,
+      shippingFee: shippingFee,
+      finalPaidAmount: paid,
+      status: isCancelled
+          ? OrderDeliveryStatus.cancelled
+          : OrderDeliveryStatus.fromCafe24Code(statusItem?['order_status']?.toString()),
+      carrierName: emptyToNull(statusItem?['shipping_company_name']),
+      carrierCode: emptyToNull(statusItem?['shipping_company_code']),
+      trackingNo: emptyToNull(statusItem?['tracking_no']),
+    );
+  }
 
   /// 환경변수 필수값 검증
   void _validateCredentials() {

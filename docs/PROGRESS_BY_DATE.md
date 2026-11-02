@@ -14,6 +14,7 @@
 | **2026-10-14** | Cafe24 OAuth 2.0(PKCE) 인증, 실시간 상품/카테고리(100개) API 연동, 상세 페이지 연결 | [2026-10-14_cafe24_api_and_data_integration.md](./2026-10-14_cafe24_api_and_data_integration.md) |
 | **2026-10-16** | 카테고리 탭 대·중분류 실시간 연동 및 OAuth 토큰 자동 리프레시(`FlutterSecureStorage`) 구현 | [2026-10-16_oauth_auto_refresh_and_category_sync.md](./2026-10-16_oauth_auto_refresh_and_category_sync.md) |
 | **2026-10-16 ~ 10-17** | Cafe24 일반 Auth 전체 구축: 회원가입·로그인(`AuthSSL`), 회원 정보 확인(휴대폰 번호 복호화 폴링), 회원탈퇴 | [2026-10-16_cafe24_auth_and_profile_integration.md](./2026-10-16_cafe24_auth_and_profile_integration.md) |
+| **2026-11-02** | `feat/order`: 장바구니 실시간 동기화 & 꼬임 방지, Cafe24 공식 주문서 자동 채움 및 PG 결제 웹뷰 연동, 결제창 이탈 방지 가드, 주문 내역 및 배송 추적 | [2026-11-02_feat_order_and_checkout_integration.md](./2026-11-02_feat_order_and_checkout_integration.md) |
 
 ---
 
@@ -94,5 +95,25 @@
   - 페이지 진입 및 새로고침(`Pull-to-Refresh`) 시 백그라운드에서 `/member/modify.html`의 `AuthSSLManager` 복호화 필드를 폴링하여 최신 연락처·이메일·적립금 실시간 동기화
 - **회원탈퇴 기능 ([`WithdrawalPage`](../lib/views/withdrawal.dart))**:
   - 네이티브 UI에서 탈퇴 유의사항 안내, 탈퇴 사유 선택, 비밀번호 재확인을 거쳐 Cafe24 서버의 `memberLeaveAction` 탈퇴 처리 및 로컬 보안 세션(`FlutterSecureStorage` & WebKit 쿠키) 완전 파기
+
+---
+
+## 7. 2026-11-02: `feat/order` 주문·결제·장바구니 시스템 및 Cafe24 실시간 연동 완료
+> 상세 내역: [`docs/2026-11-02_feat_order_and_checkout_integration.md`](./2026-11-02_feat_order_and_checkout_integration.md)
+
+- **장바구니 실시간 양방향 동기화 & 꼬임 방지 안전망 ([`Cafe24WebCartService`](../lib/services/cafe24_web_cart_service.dart) & [`CartViewModel`](../lib/viewmodels/cart_viewmodel.dart))**:
+  - 백그라운드 WebKit 세션(`/order/basket.html`)과 실시간으로 상품 추가, 수량 변경, 삭제 연동.
+  - 일시적 빈 스냅샷 수신 시 로컬 데이터 삭제 차단, 서버로 품목 자동 재적재(Push) 복구 및 이중 백업 저장소 구축.
+  - HTML 테이블 DOM 스크래핑 폴백 적용으로 `aBasketProductData` 미로딩 시에도 100% 품목 추출.
+  - 웹 세션 만료 시 무자각 자동 재로그인 및 장바구니 상단 `[다시 연결]` 안내 배너 제공.
+- **통합 결제 런처 및 네이티브 주문서 작성 화면 ([`cafe24_checkout_launcher.dart`](../lib/views/share/cafe24_checkout_launcher.dart) & [`CheckoutPage`](../lib/views/checkout.dart))**:
+  - 결제 전 회원 세션 선검증 및 무자각 복구, 다음 우편번호 검색 시트([`PostcodeSearchSheet`](../lib/views/share/postcode_search_sheet.dart)) 연동, 적립금 사용, 회원 기본 배송지 자동 동기화.
+- **Cafe24 공식 주문서 + PG 안전결제 웹뷰 ([`Cafe24OrderWebViewPage`](../lib/views/cafe24_order_webview.dart))**:
+  - 단건 옵션 선택 바로구매(`product_submit(1)`), 다건 품목 검사 및 장바구니 주문(`Basket.orderSelectBasket`), 수령인/배송지/결제수단/약관 자동 채움.
+  - **결제 웹뷰 화면 이탈 차단**: 주문서 도달 후 로고·GNB·푸터 CSS 숨김(`display: none`), 주문서 외 쇼핑몰 홈/상품/마이페이지 이동 네비게이션 가드 차단.
+  - 카드사 앱카드, 간편결제(카카오페이/토스/ISP 등), Android `intent://` 외부 앱 호출 및 OS 권한(`AndroidManifest.xml`, `Info.plist`) 보강.
+- **주문 내역 관리 및 실시간 배송 추적 ([`OrdersPage`](../lib/views/orders.dart) & [`DeliveryTrackingSheet`](../lib/views/share/delivery_tracking_sheet.dart))**:
+  - Cafe24 Admin API 연동 실시간 주문 목록/상세 조회, 결제 완료 주문번호 영구 기록, 택배사 공식 실시간 배송조회 바텀 시트 구현.
+
 
 

@@ -3,16 +3,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/cart_item.dart';
+import 'package:shopmall/models/order.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
 import 'package:shopmall/viewmodels/cart_viewmodel.dart';
+import 'package:shopmall/views/share/cafe24_checkout_launcher.dart';
 
-class CartPage extends ConsumerWidget {
+class CartPage extends ConsumerStatefulWidget {
   const CartPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CartPage> createState() => _CartPageState();
+}
+
+class _CartPageState extends ConsumerState<CartPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 장바구니 탭 진입 시 Cafe24 서버 최신 장바구니 실시간 동기화
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(cartProvider.notifier).refreshFromCafe24();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final cartItems = ref.watch(cartProvider);
     final summary = ref.watch(cartSummaryProvider);
+    final isSessionDisconnected = ref.watch(webSessionDisconnectedProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -30,6 +49,35 @@ class CartPage extends ConsumerWidget {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary, size: 20),
+            tooltip: '장바구니 새로고침',
+            onPressed: () async {
+              if (ref.read(webSessionDisconnectedProvider)) {
+                final ok = await ensureCheckoutWebSession(context, ref);
+                if (ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('쇼핑몰 장바구니 실시간 연동이 복구되었습니다.'),
+                      duration: Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+                return;
+              }
+              await ref.read(cartProvider.notifier).refreshFromCafe24();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('최신 장바구니 정보를 불러왔습니다.'),
+                    duration: Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+          ),
           if (cartItems.isNotEmpty)
             TextButton(
               onPressed: () {
@@ -46,29 +94,103 @@ class CartPage extends ConsumerWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: cartItems.isEmpty
-          ? _buildEmptyState(context, ref)
-          : Column(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        _buildFreeShippingBar(summary),
-                        _buildSelectionHeader(ref, summary),
-                        _buildItemList(context, ref, cartItems),
-                        const SizedBox(height: 12),
-                        _buildPaymentSummaryCard(summary),
-                        const SizedBox(height: 16),
-                        _buildNoticeSection(),
-                        const SizedBox(height: 24),
-                      ],
+      body: RefreshIndicator(
+        onRefresh: () => ref.read(cartProvider.notifier).refreshFromCafe24(),
+        color: AppTheme.primary,
+        child: cartItems.isEmpty
+            ? Column(
+                children: [
+                  if (isSessionDisconnected)
+                    _buildSessionReconnectBanner(context, ref),
+                  Expanded(child: _buildEmptyState(context, ref)),
+                ],
+              )
+            : Column(
+                children: [
+                  if (isSessionDisconnected)
+                    _buildSessionReconnectBanner(context, ref),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        children: [
+                          _buildFreeShippingBar(summary),
+                          _buildSelectionHeader(ref, summary),
+                          _buildItemList(context, ref, cartItems),
+                          const SizedBox(height: 12),
+                          _buildPaymentSummaryCard(summary),
+                          const SizedBox(height: 16),
+                          _buildNoticeSection(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                _buildStickyBottomBar(context, ref, summary),
-              ],
+                  _buildStickyBottomBar(context, ref, summary),
+                ],
+              ),
+      ),
+    );
+  }
+
+  // ─── 웹뷰 로그인 세션 만료 시 원클릭 재연결 안내 배너 ───
+  Widget _buildSessionReconnectBanner(BuildContext context, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFFFFBEB),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.sync_problem_rounded,
+            size: 20,
+            color: Color(0xFFD97706),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              '쇼핑몰 웹 로그인 세션이 만료되어 실시간 장바구니 연동이 일시 중지되었습니다.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF92400E),
+                height: 1.35,
+              ),
             ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            height: 32,
+            child: ElevatedButton(
+              onPressed: () async {
+                final ok = await ensureCheckoutWebSession(context, ref);
+                if (ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('쇼핑몰 장바구니 실시간 연동이 복구되었습니다.'),
+                      duration: Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD97706),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              child: const Text(
+                '다시 연결',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -206,37 +328,50 @@ class CartPage extends ConsumerWidget {
                     },
                   ),
                   GestureDetector(
-                    onTap: () => context.push('/products/${product.id}'),
-                    child: Container(
-                      width: 84,
-                      height: 84,
-                      decoration: BoxDecoration(
-                        color: AppTheme.chipBackground,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Stack(
-                        children: [
-                          Center(
-                            child: Icon(product.icon, size: 40, color: const Color(0xFF94A3B8)),
-                          ),
-                          if (product.discountRate > 0)
-                            Positioned(
-                              top: 4,
-                              left: 4,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.point,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '-${product.discountRate}%',
-                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                    onTap: () => context.push('/products/${product.id}', extra: product),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          color: AppTheme.chipBackground,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.border),
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: (product.imageUrl != null && product.imageUrl!.trim().isNotEmpty)
+                                  ? Image.network(
+                                      product.imageUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Center(
+                                        child: Icon(product.icon, size: 40, color: const Color(0xFF94A3B8)),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Icon(product.icon, size: 40, color: const Color(0xFF94A3B8)),
+                                    ),
+                            ),
+                            if (product.discountRate > 0)
+                              Positioned(
+                                top: 4,
+                                left: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.point,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '-${product.discountRate}%',
+                                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -250,7 +385,7 @@ class CartPage extends ConsumerWidget {
                           children: [
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => context.push('/products/${product.id}'),
+                                onTap: () => context.push('/products/${product.id}', extra: product),
                                 child: Text(
                                   product.name,
                                   style: const TextStyle(
@@ -349,7 +484,7 @@ class CartPage extends ConsumerWidget {
                               ),
                             ),
                             Text(
-                              CartSummary.format(item.totalPrice) + '원',
+                              '${CartSummary.format(item.totalPrice)}원',
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
@@ -497,13 +632,20 @@ class CartPage extends ConsumerWidget {
           child: ElevatedButton(
             onPressed: isEnabled
                 ? () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          '${summary.selectedCount}개 상품 (${CartSummary.format(summary.finalPrice)}원) 주문 단계로 이동합니다.',
-                        ),
-                        backgroundColor: AppTheme.point,
-                      ),
+                    final selectedItems = ref
+                        .read(cartProvider)
+                        .where((item) => item.isSelected)
+                        .toList();
+                    if (selectedItems.isEmpty) return;
+
+                    final checkoutArgs = CheckoutArgs(
+                      items: selectedItems,
+                      fromCart: true,
+                    );
+                    launchCafe24Checkout(
+                      context: context,
+                      ref: ref,
+                      args: checkoutArgs,
                     );
                   }
                 : null,
