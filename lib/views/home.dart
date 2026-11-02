@@ -5,7 +5,9 @@ import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/cart_viewmodel.dart';
 import 'package:shopmall/viewmodels/home_products_viewmodel.dart';
+import 'package:shopmall/views/share/cart_added_modal.dart';
 
 class Home extends ConsumerStatefulWidget {
   const Home({super.key});
@@ -83,24 +85,25 @@ class _HomeState extends ConsumerState<Home> {
                     .read(bottomNavProvider.notifier)
                     .setIndex(BottomNavIndex.cart),
               ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.point,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Text(
-                      '3',
-                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              if (ref.watch(cartProvider).isNotEmpty)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.point,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${ref.watch(cartProvider).length}',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(width: 4),
@@ -751,12 +754,12 @@ class _HomeState extends ConsumerState<Home> {
   }
 }
 
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends ConsumerWidget {
   final Product product;
   const _ProductCard({required this.product});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final hasImage = product.imageUrl != null && product.imageUrl!.trim().isNotEmpty;
 
     return GestureDetector(
@@ -830,6 +833,33 @@ class _ProductCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => addProductToCartWithModal(context, ref, product),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.add_shopping_cart_rounded,
+                          size: 16,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

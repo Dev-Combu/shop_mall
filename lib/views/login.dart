@@ -87,6 +87,20 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               return;
             }
 
+            // 로그인 시도 전인데 기존 웹뷰 쿠키 때문에 마이쇼핑/메인으로 리다이렉트된 경우:
+            // 서버 로그아웃 후 로그인 폼을 다시 로드하여 재로그인 데드락 방지
+            if (_loginCompleter == null || _loginCompleter!.isCompleted) {
+              if (url.contains('/myshop/index.html') ||
+                  url.contains('/index.html')) {
+                _headlessController.loadRequest(
+                  Uri.parse('https://suzicnl.com/exec/front/Member/logout/'),
+                );
+              } else if (url.contains('/exec/front/Member/logout')) {
+                _headlessController.loadRequest(Uri.parse(_loginUrl));
+              }
+              return;
+            }
+
             if (_loginCompleter != null && !_loginCompleter!.isCompleted) {
               // 1단계: 로그인 성공 후 마이쇼핑(/myshop/index.html) 도달 시 적립금/쿠폰/등급 파싱 후 modify.html로 이동
               if (url.contains('/myshop/index.html')) {
@@ -175,6 +189,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             var nameVal = (modNameEl && modNameEl.value) ? modNameEl.value.trim() : '';
             var emailVal = (modEmailEl && modEmailEl.value) ? modEmailEl.value.trim() : '';
 
+            var postEl = document.querySelector('#postcode1, input[name="postcode1"], input[name="zipcode"]');
+            var addr1El = document.querySelector('#addr1, input[name="addr1"], input[name="address1"]');
+            var addr2El = document.querySelector('#addr2, input[name="addr2"], input[name="address2"]');
+
+            var zipVal = (postEl && postEl.value) ? postEl.value.trim() : '';
+            var addr1Val = (addr1El && addr1El.value) ? addr1El.value.trim() : '';
+            var addr2Val = (addr2El && addr2El.value) ? addr2El.value.trim() : '';
+
             // AuthSSLManager 복호화가 아직 완료되지 않아 휴대폰 번호가 비어있다면 200ms 후 재확인
             if (!phoneStr && attempts < maxAttempts) {
               setTimeout(extractProfileFields, 200);
@@ -185,7 +207,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               type: 'profile',
               name: nameVal,
               email: emailVal,
-              phone: phoneStr
+              phone: phoneStr,
+              zipCode: zipVal,
+              address1: addr1Val,
+              address2: addr2Val
             }));
           } catch (e) {
             Cafe24LoginBridge.postMessage(JSON.stringify({
@@ -231,6 +256,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         final rawName = data['name']?.toString().trim() ?? '';
         final rawEmail = data['email']?.toString().trim() ?? '';
         final rawPhone = data['phone']?.toString().trim() ?? '';
+        final rawZip = data['zipCode']?.toString().trim() ?? '';
+        final rawAddr1 = data['address1']?.toString().trim() ?? '';
+        final rawAddr2 = data['address2']?.toString().trim() ?? '';
 
         final finalName = rawName.isNotEmpty
             ? rawName
@@ -243,6 +271,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ? rawEmail
               : (cleanId.contains('@') ? cleanId : '$cleanId@suzicnl.com'),
           phone: rawPhone.isNotEmpty ? rawPhone : null,
+          zipCode: rawZip.isNotEmpty ? rawZip : null,
+          address1: rawAddr1.isNotEmpty ? rawAddr1 : null,
+          address2: rawAddr2.isNotEmpty ? rawAddr2 : null,
           groupName: _tempMyShopGroup.isNotEmpty
               ? _tempMyShopGroup
               : '수지씨앤엘 정회원',
@@ -310,6 +341,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             idEl.value = $jsId;
             pwEl.value = $jsPw;
 
+            // 로그인 상태 유지(자동로그인) 체크박스 활성화 -> 웹뷰 쿠키 세션 영속화
+            var keepEl = document.getElementById('use_login_keeping') || document.querySelector('input[name="use_login_keeping"]');
+            if (keepEl && !keepEl.checked) {
+              keepEl.checked = true;
+              keepEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
             var form = idEl.closest('form') || document.querySelector('form[id^="member_form"]');
             if (typeof MemberAction !== 'undefined' && typeof MemberAction.login === 'function' && form) {
               MemberAction.login(form.id);
@@ -332,7 +370,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         onTimeout: () => throw Exception('아이디 또는 비밀번호를 다시 확인해주세요.'),
       );
 
-      await ref.read(authProvider.notifier).setAuthenticatedUser(user);
+      await ref
+          .read(authProvider.notifier)
+          .setAuthenticatedUser(user, password: password);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

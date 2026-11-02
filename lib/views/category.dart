@@ -6,8 +6,10 @@ import 'package:shopmall/models/category.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/cart_viewmodel.dart';
 import 'package:shopmall/viewmodels/category_viewmodel.dart';
 import 'package:shopmall/viewmodels/home_products_viewmodel.dart';
+import 'package:shopmall/views/share/cart_added_modal.dart';
 
 class CategoryPage extends ConsumerStatefulWidget {
   const CategoryPage({super.key});
@@ -233,28 +235,29 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                     .read(bottomNavProvider.notifier)
                     .setIndex(BottomNavIndex.cart),
               ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 16,
-                  height: 16,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.point,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Text(
-                      '3',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+              if (ref.watch(cartProvider).isNotEmpty)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.point,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${ref.watch(cartProvider).length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(width: 4),
@@ -774,7 +777,15 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, size: 18, color: Color(0xFFCBD5E1)),
+                IconButton(
+                  icon: const Icon(
+                    Icons.add_shopping_cart_rounded,
+                    size: 18,
+                    color: AppTheme.primary,
+                  ),
+                  tooltip: '장바구니 담기',
+                  onPressed: () => addProductToCartWithModal(context, ref, product),
+                ),
               ],
             ),
           ),

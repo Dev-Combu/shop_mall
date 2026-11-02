@@ -96,7 +96,7 @@ class MyPage extends ConsumerWidget {
                   icon: Icons.local_shipping_outlined,
                   title: '주문/배송 조회',
                   subtitle: isLoggedIn ? '총 ${user.orders}건 진행 중' : null,
-                  onTap: () {},
+                  onTap: () => context.push('/orders'),
                 ),
                 _SettingItem(
                   icon: Icons.history_outlined,
@@ -106,7 +106,12 @@ class MyPage extends ConsumerWidget {
                 _SettingItem(
                   icon: Icons.location_on_outlined,
                   title: '배송지 관리',
-                  onTap: () {},
+                  subtitle: isLoggedIn
+                      ? (user.fullAddress.isNotEmpty
+                          ? user.fullAddress
+                          : '기본 배송지를 등록해주세요')
+                      : null,
+                  onTap: () => context.push(isLoggedIn ? '/profile' : '/login'),
                 ),
               ],
             ),

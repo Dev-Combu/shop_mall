@@ -6,8 +6,10 @@ import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/cafe24_api_service.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/cart_viewmodel.dart';
 import 'package:shopmall/viewmodels/category_viewmodel.dart';
 import 'package:shopmall/viewmodels/home_products_viewmodel.dart';
+import 'package:shopmall/views/share/cart_added_modal.dart';
 
 /// 카테고리별 상품 목록 전용 Provider
 final categoryProductsListProvider =
@@ -166,12 +168,40 @@ class _CategoryProductsPageState extends ConsumerState<CategoryProductsPage> {
             icon: const Icon(Icons.search, color: AppTheme.primary),
             onPressed: () => context.push('/search'),
           ),
-          IconButton(
-            icon: const Icon(Icons.shopping_cart_outlined, color: AppTheme.primary),
-            onPressed: () {
-              context.go('/cart');
-              ref.read(bottomNavProvider.notifier).setIndex(BottomNavIndex.cart);
-            },
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.shopping_cart_outlined, color: AppTheme.primary),
+                onPressed: () {
+                  context.go('/cart');
+                  ref.read(bottomNavProvider.notifier).setIndex(BottomNavIndex.cart);
+                },
+              ),
+              if (ref.watch(cartProvider).isNotEmpty)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.point,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${ref.watch(cartProvider).length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 4),
         ],
@@ -407,6 +437,33 @@ class _CategoryProductsPageState extends ConsumerState<CategoryProductsPage> {
                         ),
                       ),
                     ),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => addProductToCartWithModal(context, ref, product),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.add_shopping_cart_rounded,
+                          size: 16,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -578,7 +635,15 @@ class _CategoryProductsPageState extends ConsumerState<CategoryProductsPage> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, size: 20, color: Color(0xFFCBD5E1)),
+            IconButton(
+              icon: const Icon(
+                Icons.add_shopping_cart_rounded,
+                size: 20,
+                color: AppTheme.primary,
+              ),
+              tooltip: '장바구니 담기',
+              onPressed: () => addProductToCartWithModal(context, ref, product),
+            ),
           ],
         ),
       ),

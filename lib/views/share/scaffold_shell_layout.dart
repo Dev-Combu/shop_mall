@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
+import 'package:shopmall/services/cafe24_web_cart_service.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/cart_viewmodel.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 /// BottomNavigationBar가 항상 유지되는 Shell 레이아웃
 class ScaffoldShellLayout extends ConsumerWidget {
@@ -34,7 +37,21 @@ class ScaffoldShellLayout extends ConsumerWidget {
     final currentIndex = navigationShell.currentIndex;
 
     return Scaffold(
-      body: navigationShell,
+      body: Stack(
+        children: [
+          navigationShell,
+          Offstage(
+            offstage: true,
+            child: SizedBox(
+              width: 1,
+              height: 1,
+              child: WebViewWidget(
+                controller: ref.read(cafe24WebCartServiceProvider).controller,
+              ),
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         onTap: (index) => _onTap(context, ref, index),
@@ -60,6 +77,9 @@ class ScaffoldShellLayout extends ConsumerWidget {
 
   void _onTap(BuildContext context, WidgetRef ref, int index) {
     ref.read(bottomNavProvider.notifier).setIndex(index);
+    if (index == BottomNavIndex.cart) {
+      ref.read(cartProvider.notifier).refreshFromCafe24();
+    }
     navigationShell.goBranch(
       index,
       initialLocation: index == navigationShell.currentIndex,

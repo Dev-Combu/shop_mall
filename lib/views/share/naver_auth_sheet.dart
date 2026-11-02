@@ -97,6 +97,12 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
             }
             return NavigationDecision.navigate;
           },
+          onPageStarted: (String url) {
+            if (url.contains('naver.com') ||
+                url.contains('/Api/Member/Oauth2ClientCallback')) {
+              _hasVisitedNaverAuth = true;
+            }
+          },
           onPageFinished: (String url) {
             debugPrint('[NaverAuth PageFinished] $url');
 
@@ -111,34 +117,32 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
               return;
             }
 
-            // 2. 최초 Cafe24 로그인 페이지 로드 완료 시 네이버 로그인 실행
+            // 2. 마이쇼핑(/myshop/index.html) 또는 회원정보 수정(/member/modify.html) 도달 시:
+            // 재로그인 시 302 자동 리다이렉트로 인해 naver.com onPageFinished가 생략되더라도
+            // 즉시 로그인 정보를 추출하여 앱으로 전달!
+            if (url.contains('/myshop/index.html')) {
+              _verifyAndScrapeMyShop();
+              return;
+            }
+
+            if (url.contains('/member/modify.html')) {
+              _pollModifyPageForDecryptedProfile();
+              return;
+            }
+
+            // 3. 최초 Cafe24 로그인 페이지 로드 완료 시 네이버 로그인 실행
             if (!_hasTriggeredNaverLogin && url.contains('/member/login.html')) {
               _hasTriggeredNaverLogin = true;
               _triggerCafe24NaverLogin();
               return;
             }
 
-            // 3. 네이버 인증을 거친 뒤 suzicnl.com으로 돌아온 경우
-            if (_hasVisitedNaverAuth && url.contains('suzicnl.com')) {
-              // OAuth 콜백 중간 처리 경로는 그대로 진행하도록 대기
+            // 4. 네이버 인증 트리거 이후 suzicnl.com의 다른 페이지로 이동한 경우
+            if ((_hasVisitedNaverAuth || _hasTriggeredNaverLogin) &&
+                url.contains('suzicnl.com')) {
               if (url.contains('/Api/Member/Oauth2ClientCallback')) {
                 return;
               }
-
-              // 3-A. 마이쇼핑(/myshop/index.html)에 도달한 경우: 실제 로그인 여부 검증 후 프로필 추출
-              if (url.contains('/myshop/index.html')) {
-                _verifyAndScrapeMyShop();
-                return;
-              }
-
-              // 3-B. 회원정보 수정(/member/modify.html)에 도달한 경우: 복호화된 이름/이메일/휴대폰 추출
-              if (url.contains('/member/modify.html')) {
-                _pollModifyPageForDecryptedProfile();
-                return;
-              }
-
-              // 3-C. 그 외 suzicnl.com 페이지(신규 SNS 약관동의 레이어, /member/join.html, /member/agreement.html, /index.html 등):
-              // 현재 페이지에서 Cafe24 세션이 생성되었는지 또는 추가 가입/약관동의 화면인지 확인
               _inspectCafe24PageAfterNaver();
             }
           },
@@ -157,6 +161,21 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
         function tryTrigger() {
           attempts++;
           try {
+            // 이미 Cafe24 세션이 로그인된 상태라면 즉시 마이쇼핑으로 이동하여 프로필 수집
+            if ((typeof CAPP_ASYNC_METHODS !== 'undefined' && CAPP_ASYNC_METHODS.IS_LOGIN === true) ||
+                document.cookie.indexOf('iscache=F') !== -1 ||
+                document.querySelector('a[href*="/exec/front/Member/logout"]')) {
+              window.location.href = 'https://suzicnl.com/myshop/index.html';
+              return true;
+            }
+
+            // 로그인 상태 유지(자동로그인) 체크박스 활성화 -> 웹뷰 쿠키 세션 영속화
+            var keepEl = document.getElementById('use_login_keeping') || document.querySelector('input[name="use_login_keeping"]');
+            if (keepEl && !keepEl.checked) {
+              keepEl.checked = true;
+              keepEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
             // 1. Cafe24 공식 SNS 네이버 로그인 메서드 시도
             if (typeof MemberAction !== 'undefined' && typeof MemberAction.snsLogin === 'function') {
               MemberAction.snsLogin('naver', '%2Fmyshop%2Findex.html');
@@ -290,35 +309,52 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
   Future<void> _verifyAndScrapeMyShop() async {
     await _controller.runJavaScript('''
       (function() {
-        try {
-          if (window.location.href.indexOf('/member/login.html') !== -1) {
-            return;
-          }
-
-          var nameEl = document.querySelector('.xans-myshop-asyncbenefit .name, .xans-member-var-name, strong.name, .txtEm');
-          var groupEl = document.querySelector('.xans-myshop-asyncbenefit .group, .xans-member-var-group_name');
-          var pointEl = document.querySelector('#xans_myshop_bankbook_avail_mileage, .avail_mileage');
-          var couponEl = document.querySelector('#xans_myshop_bankbook_coupon_cnt, .couponCount');
-          var idEl = document.querySelector('.xans-member-var-id');
-
-          var memberId = idEl ? idEl.innerText.trim() : '';
-          if (!memberId && typeof CAPP_ASYNC_METHODS !== 'undefined' && CAPP_ASYNC_METHODS.AppCommon && typeof CAPP_ASYNC_METHODS.AppCommon.getMemberID === 'function') {
-            memberId = CAPP_ASYNC_METHODS.AppCommon.getMemberID() || '';
-          }
-
-          Cafe24NaverBridge.postMessage(JSON.stringify({
-            type: 'myshop',
-            id: memberId,
-            name: nameEl ? nameEl.innerText.trim() : '',
-            groupName: groupEl ? groupEl.innerText.trim() : '수지씨앤엘 정회원',
-            points: pointEl ? pointEl.innerText.replace(/[^0-9]/g, '') : '0',
-            coupons: couponEl ? couponEl.innerText.replace(/[^0-9]/g, '') : '0'
-          }));
-
-          window.location.href = 'https://suzicnl.com/member/modify.html';
-        } catch (e) {
-          window.location.href = 'https://suzicnl.com/member/modify.html';
+        if (window.location.href.indexOf('/member/login.html') !== -1) {
+          return;
         }
+
+        var attempts = 0;
+        var maxAttempts = 12;
+
+        function pollMyShop() {
+          attempts++;
+          try {
+            var nameEl = document.querySelector('.xans-myshop-asyncbenefit .name, .xans-member-var-name, strong.name, .txtEm');
+            var groupEl = document.querySelector('.xans-myshop-asyncbenefit .group, .xans-member-var-group_name');
+            var pointEl = document.querySelector('#xans_myshop_bankbook_avail_mileage, .avail_mileage');
+            var couponEl = document.querySelector('#xans_myshop_bankbook_coupon_cnt, .couponCount');
+            var idEl = document.querySelector('.xans-member-var-id');
+
+            var memberId = idEl ? idEl.innerText.trim() : '';
+            if (!memberId && typeof CAPP_ASYNC_METHODS !== 'undefined' && CAPP_ASYNC_METHODS.AppCommon && typeof CAPP_ASYNC_METHODS.AppCommon.getMemberID === 'function') {
+              memberId = CAPP_ASYNC_METHODS.AppCommon.getMemberID() || '';
+            }
+            if (!memberId && typeof CAPP_ASYNC_METHODS !== 'undefined' && CAPP_ASYNC_METHODS.member && CAPP_ASYNC_METHODS.member.member_id) {
+              memberId = CAPP_ASYNC_METHODS.member.member_id;
+            }
+            var memberName = nameEl ? nameEl.innerText.trim() : '';
+
+            if ((!memberId || !memberName) && attempts < maxAttempts) {
+              setTimeout(pollMyShop, 150);
+              return;
+            }
+
+            Cafe24NaverBridge.postMessage(JSON.stringify({
+              type: 'myshop',
+              id: memberId,
+              name: memberName,
+              groupName: groupEl ? groupEl.innerText.trim() : '수지씨앤엘 정회원',
+              points: pointEl ? pointEl.innerText.replace(/[^0-9]/g, '') : '0',
+              coupons: couponEl ? couponEl.innerText.replace(/[^0-9]/g, '') : '0'
+            }));
+
+            window.location.href = 'https://suzicnl.com/member/modify.html';
+          } catch (e) {
+            window.location.href = 'https://suzicnl.com/member/modify.html';
+          }
+        }
+
+        pollMyShop();
       })();
     ''');
   }
@@ -363,6 +399,14 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
             var nameVal = (modNameEl && modNameEl.value) ? modNameEl.value.trim() : '';
             var emailVal = (modEmailEl && modEmailEl.value) ? modEmailEl.value.trim() : '';
 
+            var postEl = document.querySelector('#postcode1, input[name="postcode1"], input[name="zipcode"]');
+            var addr1El = document.querySelector('#addr1, input[name="addr1"], input[name="address1"]');
+            var addr2El = document.querySelector('#addr2, input[name="addr2"], input[name="address2"]');
+
+            var zipVal = (postEl && postEl.value) ? postEl.value.trim() : '';
+            var addr1Val = (addr1El && addr1El.value) ? addr1El.value.trim() : '';
+            var addr2Val = (addr2El && addr2El.value) ? addr2El.value.trim() : '';
+
             if ((!phoneStr || !nameVal || !idVal) && attempts < maxAttempts) {
               setTimeout(checkDecryptedFields, 200);
               return;
@@ -373,7 +417,10 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
               id: idVal,
               name: nameVal,
               email: emailVal,
-              phone: phoneStr
+              phone: phoneStr,
+              zipCode: zipVal,
+              address1: addr1Val,
+              address2: addr2Val
             }));
           } catch (e) {
             Cafe24NaverBridge.postMessage(JSON.stringify({
@@ -448,11 +495,40 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
         if (rawGroup.isNotEmpty) _tempGroup = rawGroup;
         _tempPoints = int.tryParse(data['points']?.toString() ?? '0') ?? 0;
         _tempCoupons = int.tryParse(data['coupons']?.toString() ?? '0') ?? 0;
+
+        // 안전장치: /member/modify.html 진입 시 비밀번호 재확인 등으로 막히더라도
+        // 마이쇼핑에서 확인된 회원 정보로 2.8초 내 반드시 로그인 완료 처리
+        if (_tempMemberId.isNotEmpty || _tempName.isNotEmpty) {
+          Future.delayed(const Duration(milliseconds: 2800), () {
+            if (!_isCompleted && mounted) {
+              _isCompleted = true;
+              final fallbackId = _tempMemberId.isNotEmpty
+                  ? _tempMemberId
+                  : 'naver_${_tempName.hashCode.abs()}';
+              final fallbackName =
+                  _tempName.isNotEmpty ? _tempName : fallbackId;
+              final user = User(
+                id: fallbackId,
+                name: fallbackName,
+                email: '$fallbackId@naver.com',
+                groupName: _tempGroup.isNotEmpty ? _tempGroup : '수지씨앤엘 정회원',
+                points: _tempPoints,
+                coupons: _tempCoupons,
+                orders: 0,
+                isCafe24Member: true,
+              );
+              Navigator.of(context).pop(user);
+            }
+          });
+        }
       } else if (type == 'profile') {
         final rawId = data['id']?.toString().trim() ?? '';
         final rawName = data['name']?.toString().trim() ?? '';
         final rawEmail = data['email']?.toString().trim() ?? '';
         final rawPhone = data['phone']?.toString().trim() ?? '';
+        final rawZip = data['zipCode']?.toString().trim() ?? '';
+        final rawAddr1 = data['address1']?.toString().trim() ?? '';
+        final rawAddr2 = data['address2']?.toString().trim() ?? '';
 
         final finalId = rawId.isNotEmpty ? rawId : _tempMemberId;
         final finalName = rawName.isNotEmpty
@@ -474,6 +550,9 @@ class _NaverAuthSheetState extends State<NaverAuthSheet> {
           name: finalName,
           email: finalEmail,
           phone: rawPhone.isNotEmpty ? rawPhone : null,
+          zipCode: rawZip.isNotEmpty ? rawZip : null,
+          address1: rawAddr1.isNotEmpty ? rawAddr1 : null,
+          address2: rawAddr2.isNotEmpty ? rawAddr2 : null,
           groupName: _tempGroup.isNotEmpty ? _tempGroup : '수지씨앤엘 정회원',
           points: _tempPoints,
           coupons: _tempCoupons,

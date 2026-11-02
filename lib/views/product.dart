@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shopmall/config/theme/theme.dart';
+import 'package:shopmall/models/cart_item.dart';
+import 'package:shopmall/models/order.dart';
 import 'package:shopmall/models/product.dart';
 import 'package:shopmall/services/cafe24_api_service.dart';
 import 'package:shopmall/services/product_data.dart';
+import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
+import 'package:shopmall/viewmodels/cart_viewmodel.dart';
+import 'package:shopmall/views/share/cart_added_modal.dart';
+import 'package:shopmall/views/share/cafe24_checkout_launcher.dart';
 
 /// 상품 상세 & 구매 페이지
 ///
 /// GoRouter Shell 외부 라우트(`/products/:id`)로 등록되어,
 /// BottomNavigationBar 없이 전체 화면으로 표시됩니다.
-class ProductPage extends StatefulWidget {
+class ProductPage extends ConsumerStatefulWidget {
   final String productId;
   final Product? initialProduct;
 
@@ -19,15 +27,16 @@ class ProductPage extends StatefulWidget {
   });
 
   @override
-  State<ProductPage> createState() => _ProductPageState();
+  ConsumerState<ProductPage> createState() => _ProductPageState();
 }
 
-class _ProductPageState extends State<ProductPage>
+class _ProductPageState extends ConsumerState<ProductPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _quantity = 1;
   bool _isFavorite = false;
   bool _isLoading = false;
+  List<_ReviewData> _liveReviews = [];
 
   // 상품 데이터 (전달받은 데이터 또는 ID로 조회)
   Product? _product;
@@ -48,6 +57,28 @@ class _ProductPageState extends State<ProductPage>
     if (_product == null) {
       _fetchProductDetail();
     }
+    _fetchReviews();
+  }
+
+  Future<void> _fetchReviews() async {
+    try {
+      final apiService = ref.read(cafe24ApiServiceProvider);
+      final raw = await apiService.fetchProductReviews(widget.productId);
+      if (raw.isNotEmpty && mounted) {
+        setState(() {
+          _liveReviews = raw.map((a) {
+            return _ReviewData(
+              name: a['writer']?.toString() ?? '구매고객',
+              rating: int.tryParse(a['rating']?.toString() ?? '5') ?? 5,
+              date: a['created_date']?.toString().split('T').first ?? '',
+              comment: a['content']?.toString().replaceAll(RegExp(r'<[^>]*>'), '').trim() ??
+                  a['title']?.toString() ??
+                  '만족스러운 구매였습니다.',
+            );
+          }).toList();
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchProductDetail() async {
@@ -142,9 +173,40 @@ class _ProductPageState extends State<ProductPage>
             icon: const Icon(Icons.share_outlined),
             onPressed: () {},
           ),
-          IconButton(
-            icon: const Icon(Icons.shopping_cart_outlined),
-            onPressed: () => context.go('/cart'),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.shopping_cart_outlined),
+                onPressed: () {
+                  ref.read(bottomNavProvider.notifier).setIndex(BottomNavIndex.cart);
+                  context.go('/cart');
+                },
+              ),
+              if (ref.watch(cartProvider).isNotEmpty)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.point,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${ref.watch(cartProvider).length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 4),
         ],
@@ -628,6 +690,9 @@ class _ProductPageState extends State<ProductPage>
   }
 
   List<Widget> _buildSampleReviews() {
+    if (_liveReviews.isNotEmpty) {
+      return _liveReviews.map((r) => _buildReviewItem(r)).toList();
+    }
     final reviews = [
       _ReviewData(name: '김지은', rating: 5, date: '2026.09.10', comment: '품질이 정말 좋아요! 배송도 빠르고 포장도 꼼꼼했어요.'),
       _ReviewData(name: '박현수', rating: 4, date: '2026.09.05', comment: '가성비 최고입니다. 다음에도 구매할 예정이에요.'),
@@ -703,23 +768,21 @@ class _ProductPageState extends State<ProductPage>
           Expanded(
             child: OutlinedButton(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('장바구니에 담았습니다 (수량: $_quantity)'),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
-                    backgroundColor: const Color(0xFF424242),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
+                if (_product == null) return;
+                addProductToCartWithModal(
+                  context,
+                  ref,
+                  _product!,
+                  quantity: _quantity,
                 );
               },
               style: OutlinedButton.styleFrom(
-                foregroundColor: _darkGreen,
-                side: const BorderSide(color: _darkGreen, width: 1.5),
+                foregroundColor: AppTheme.primary,
+                side: const BorderSide(color: AppTheme.primary, width: 1.5),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text('장바구니', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              child: const Text('장바구니 담기', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             ),
           ),
           const SizedBox(width: 10),
@@ -728,44 +791,25 @@ class _ProductPageState extends State<ProductPage>
             flex: 2,
             child: ElevatedButton(
               onPressed: () {
-                // 구매 완료 다이얼로그
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    title: const Text('주문 확인', style: TextStyle(fontWeight: FontWeight.bold)),
-                    content: Text(
-                      '${_product!.name}\n수량: $_quantity개\n결제 금액: $formattedTotal',
-                      style: const TextStyle(height: 1.6),
+                if (_product == null) return;
+                final checkoutArgs = CheckoutArgs(
+                  items: [
+                    CartItem(
+                      product: _product!,
+                      quantity: _quantity,
+                      isSelected: true,
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('취소', style: TextStyle(color: _textGray)),
-                      ),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(ctx).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('주문이 완료되었습니다!'),
-                              behavior: SnackBarBehavior.floating,
-                              backgroundColor: _green,
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _green,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text('구매하기', style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
+                  ],
+                  fromCart: false,
+                );
+                launchCafe24Checkout(
+                  context: context,
+                  ref: ref,
+                  args: checkoutArgs,
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: _green,
+                backgroundColor: AppTheme.point,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

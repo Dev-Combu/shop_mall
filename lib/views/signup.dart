@@ -364,7 +364,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
         orders: 0,
         isCafe24Member: true,
       );
-      await ref.read(authProvider.notifier).setAuthenticatedUser(newUser);
+      await ref
+          .read(authProvider.notifier)
+          .setAuthenticatedUser(newUser, password: password);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

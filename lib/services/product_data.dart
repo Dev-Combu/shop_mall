@@ -59,7 +59,7 @@ class ProductDataService {
       tagColor: const Color(0xFF4CAF50),
       category: '인조잔디',
       icon: Icons.grass,
-      imageUrl: 'https://images.unsplash.com/photo-1592417817098-8f3d6910283f?w=500&auto=format&fit=crop&q=80',
+      imageUrl: 'https://images.unsplash.com/photo-1558904541-efa843a96f01?w=500&auto=format&fit=crop&q=80',
       rating: 4.7,
       reviewCount: 201,
       description:
@@ -136,7 +136,7 @@ class ProductDataService {
       tagColor: const Color(0xFFE53935),
       category: '인조잔디',
       icon: Icons.grass,
-      imageUrl: 'https://images.unsplash.com/photo-1592417817098-8f3d6910283f?w=500&auto=format&fit=crop&q=80',
+      imageUrl: 'https://images.unsplash.com/photo-1558904541-efa843a96f01?w=500&auto=format&fit=crop&q=80',
       rating: 4.4,
       reviewCount: 176,
       description:

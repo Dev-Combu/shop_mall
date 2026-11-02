@@ -202,8 +202,11 @@ class Product {
   }
 
   static String? _sanitizeImageUrl(String? url) {
-    if (url == null || url.trim().isEmpty) return null;
+    if (url == null || url.trim().isEmpty || url == 'null') return null;
     final trimmed = url.trim();
+    if (trimmed.contains('photo-1592417817098-8f3d6910283f')) {
+      return 'https://images.unsplash.com/photo-1558904541-efa843a96f01?w=500&auto=format&fit=crop&q=80';
+    }
     if (trimmed.startsWith('//')) {
       return 'https:$trimmed';
     }
@@ -225,6 +228,48 @@ class Product {
 
   String formattedTotalPrice(int quantity) =>
       '${_formatNumber(salePrice * quantity)}원';
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'originalPrice': originalPrice,
+        'discountRate': discountRate,
+        'tag': tag,
+        'tagColorValue': tagColor.toARGB32(),
+        'category': category,
+        'imageUrl': imageUrl,
+        'description': description,
+        'rating': rating,
+        'reviewCount': reviewCount,
+        'categoryNos': categoryNos,
+        'isNew': isNew,
+        'isRecommend': isRecommend,
+        'createdDate': createdDate?.toIso8601String(),
+      };
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final catName = json['category']?.toString() ?? '생활용품';
+    return Product(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      originalPrice: int.tryParse(json['originalPrice']?.toString() ?? '0') ?? 0,
+      discountRate: int.tryParse(json['discountRate']?.toString() ?? '0') ?? 0,
+      tag: json['tag']?.toString() ?? 'BEST',
+      tagColor: Color(int.tryParse(json['tagColorValue']?.toString() ?? '') ?? 0xFF1E293B),
+      category: catName,
+      icon: _matchProductIcon(catName),
+      imageUrl: _sanitizeImageUrl(json['imageUrl']?.toString()),
+      description: json['description']?.toString() ?? '',
+      rating: double.tryParse(json['rating']?.toString() ?? '4.5') ?? 4.5,
+      reviewCount: int.tryParse(json['reviewCount']?.toString() ?? '0') ?? 0,
+      categoryNos: (json['categoryNos'] is List)
+          ? (json['categoryNos'] as List).map((e) => int.tryParse(e.toString()) ?? 0).toList()
+          : const [],
+      isNew: json['isNew'] == true,
+      isRecommend: json['isRecommend'] == true,
+      createdDate: DateTime.tryParse(json['createdDate']?.toString() ?? ''),
+    );
+  }
 
   static String _formatNumber(int n) {
     final s = n.toString();
