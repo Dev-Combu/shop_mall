@@ -33,6 +33,25 @@ class OrdersPage extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back_ios_new, color: AppTheme.primary, size: 20),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              context.push(
+                '/web?title=${Uri.encodeQueryComponent('쇼핑몰 주문/배송 조회')}&path=${Uri.encodeQueryComponent('/myshop/order/list.html')}',
+              );
+            },
+            icon: const Icon(Icons.open_in_browser, size: 16, color: AppTheme.primary),
+            label: const Text(
+              '쇼핑몰 내역',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: orders.isEmpty
           ? _buildEmptyState(context)
@@ -169,15 +188,35 @@ class OrdersPage extends ConsumerWidget {
               style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => context.go('/'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('쇼핑하러 가기', style: TextStyle(fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton(
+                  onPressed: () {
+                    context.push(
+                      '/web?title=${Uri.encodeQueryComponent('쇼핑몰 주문/배송 조회')}&path=${Uri.encodeQueryComponent('/myshop/order/list.html')}',
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.border),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('쇼핑몰 웹 내역 확인'),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: () => context.go('/'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('쇼핑하러 가기', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
             ),
           ],
         ),

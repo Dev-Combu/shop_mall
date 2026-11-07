@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
+import 'package:shopmall/models/cart_item.dart';
 import 'package:shopmall/models/order.dart';
 import 'package:shopmall/services/cafe24_web_cart_service.dart';
 import 'package:shopmall/viewmodels/auth_viewmodel.dart';
@@ -178,14 +179,51 @@ Future<void> launchCafe24Checkout({
 
   final user = ref.read(authProvider);
 
-  // 세션 복구 과정에서 갱신된 최신 장바구니 품목(basketProductNo 포함) 반영
+  // 세션 복구 과정에서 갱신된 최신 장바구니 품목(basketProductNo 포함) 반영 (옵션 정보 및 음수 차감액 보존)
   CheckoutArgs effectiveArgs = args;
   if (args.fromCart) {
-    final selectedIds = {for (final it in args.items) it.product.id};
-    final refreshedItems = ref
-        .read(cartProvider)
-        .where((it) => selectedIds.contains(it.product.id))
-        .toList();
+    final currentCart = ref.read(cartProvider);
+    final Set<CartItem> used = {};
+    final refreshedItems = <CartItem>[];
+
+    for (final orig in args.items) {
+      CartItem? matched;
+      if (orig.basketProductNo != null && orig.basketProductNo! > 0) {
+        for (final it in currentCart) {
+          if (!used.contains(it) && it.basketProductNo == orig.basketProductNo) {
+            matched = it;
+            used.add(it);
+            break;
+          }
+        }
+      }
+      if (matched == null) {
+        for (final it in currentCart) {
+          if (!used.contains(it) && it.product.id == orig.product.id) {
+            matched = it;
+            used.add(it);
+            break;
+          }
+        }
+      }
+
+      if (matched != null) {
+        refreshedItems.add(
+          matched.copyWith(
+            basketProductNo: matched.basketProductNo ?? orig.basketProductNo,
+            selectedOptions: matched.selectedOptions.isNotEmpty
+                ? matched.selectedOptions
+                : orig.selectedOptions,
+            optionAdditionalAmount: matched.optionAdditionalAmount != 0
+                ? matched.optionAdditionalAmount
+                : orig.optionAdditionalAmount,
+          ),
+        );
+      } else {
+        refreshedItems.add(orig);
+      }
+    }
+
     if (refreshedItems.isNotEmpty) {
       effectiveArgs = CheckoutArgs(items: refreshedItems, fromCart: true);
     }

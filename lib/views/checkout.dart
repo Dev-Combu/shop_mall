@@ -39,7 +39,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   String _selectedDeliveryMemo = '문 앞에 놓아주세요';
   String _selectedPaymentMethod = '신용/체크카드';
   int _usedPoints = 0;
-  bool _agreedTerms = true;
+  bool _agreedTerms = false;
   bool _isSubmitting = false;
 
   static const List<String> _deliveryMemos = [

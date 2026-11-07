@@ -410,10 +410,29 @@ class _CartPageState extends ConsumerState<CartPage> {
                             ),
                           ],
                         ),
+                        if (item.formattedOptionsText.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '옵션: ${item.formattedOptionsText}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF475569),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            if (product.discountRate > 0) ...[
+                            if (product.discountRate > 0 || item.unitSalePrice != product.originalPrice) ...[
                               Text(
                                 product.formattedOriginalPrice,
                                 style: const TextStyle(
@@ -425,7 +444,7 @@ class _CartPageState extends ConsumerState<CartPage> {
                               const SizedBox(width: 6),
                             ],
                             Text(
-                              product.formattedSalePrice,
+                              '${CartSummary.format(item.unitSalePrice)}원',
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold,
