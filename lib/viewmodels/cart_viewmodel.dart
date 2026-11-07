@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -192,25 +193,6 @@ class CartViewModel extends Notifier<List<CartItem>> {
         _hasPendingLocalMutations = true;
       }
 
-      // Admin API 자격 증명이 있다면 보조 조회로만 보강 (기존 품목 삭제 안 함)
-      if (_api.hasAdminCredentials) {
-        try {
-          final adminItems = await _api.fetchMemberCart(memberId);
-          if (adminItems.isNotEmpty) {
-            final Map<String, CartItem> merged = {
-              for (final item in localItems) item.product.id: item,
-            };
-            for (final rItem in adminItems) {
-              final prev = merged[rItem.product.id];
-              merged[rItem.product.id] = rItem.copyWith(
-                isSelected: prev?.isSelected ?? true,
-              );
-            }
-            state = merged.values.toList();
-            await _persistCart();
-          }
-        } catch (_) {}
-      }
       return;
     }
 
@@ -295,20 +277,53 @@ class CartViewModel extends Notifier<List<CartItem>> {
     }
   }
 
+  String _cleanOptionText(String text) {
+    var cleaned = text.trim();
+    // 앞뒤 중복 대괄호 제거: [[옵션: 120x100cm당]] -> 옵션: 120x100cm당
+    while (cleaned.startsWith('[') && cleaned.endsWith(']') && cleaned.length >= 2) {
+      cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+    }
+    // 접두사 '옵션:' 정리
+    if (cleaned.startsWith('옵션:') || cleaned.startsWith('옵션 :')) {
+      cleaned = cleaned.substring(cleaned.indexOf(':') + 1).trim();
+    }
+    return cleaned;
+  }
+
   Future<List<CartItem>> _parseRawWebItems(
     List<Map<String, dynamic>> rawList,
     List<CartItem> referenceItems,
   ) async {
     final List<CartItem> parsedList = [];
+    final Set<CartItem> usedRefs = {};
+
     for (final raw in rawList) {
       final pNo = raw['product_no']?.toString() ?? '';
       final qty = int.tryParse(raw['quantity']?.toString() ?? '1') ?? 1;
       final bNo = int.tryParse(raw['basket_product_no']?.toString() ?? '');
       if (pNo.isNotEmpty) {
-        Product? prod = referenceItems
-            .where((it) => it.product.id == pNo)
-            .firstOrNull
-            ?.product;
+        // 기존 장바구니 품목에서 1:1 매칭하여 옵션 및 추가금액 보존
+        CartItem? refItem;
+        if (bNo != null && bNo > 0) {
+          for (final it in referenceItems) {
+            if (!usedRefs.contains(it) && it.basketProductNo == bNo) {
+              refItem = it;
+              usedRefs.add(it);
+              break;
+            }
+          }
+        }
+        if (refItem == null) {
+          for (final it in referenceItems) {
+            if (!usedRefs.contains(it) && it.product.id == pNo) {
+              refItem = it;
+              usedRefs.add(it);
+              break;
+            }
+          }
+        }
+
+        Product? prod = refItem?.product;
         if (prod == null) {
           try {
             prod = await _api.fetchProductDetail(pNo);
@@ -326,12 +341,43 @@ class CartViewModel extends Notifier<List<CartItem>> {
           tagColor: const Color(0xFF64748B),
         );
 
+        // 원격 스냅샷에 옵션 문자열이 있다면 파싱, 없다면 기존 로컬 옵션 그대로 보존
+        List<String> finalOptions = refItem?.selectedOptions ?? const [];
+        if (raw['options'] is List) {
+          final optList = (raw['options'] as List)
+              .map((e) => _cleanOptionText(e.toString()))
+              .where((e) => e.isNotEmpty)
+              .toList();
+          if (optList.isNotEmpty) {
+            finalOptions = optList;
+          }
+        } else if (raw['option_str'] != null && raw['option_str'].toString().trim().isNotEmpty) {
+          final optStr = _cleanOptionText(raw['option_str'].toString());
+          if (optStr.isNotEmpty) {
+            finalOptions = [optStr];
+          }
+        } else if (finalOptions.isNotEmpty) {
+          finalOptions = finalOptions.map(_cleanOptionText).toList();
+        }
+
+        // 옵션 추가금액 계산: 원격 실제 판매단가(rawPrice/qty)와 본품 할인가(prod.salePrice)의 차액 반영
+        int finalAdditionalAmount = refItem?.optionAdditionalAmount ?? 0;
+        if (rawPrice > 0 && qty > 0 && prod.salePrice > 0) {
+          final remoteUnitPrice = rawPrice ~/ qty;
+          final diff = remoteUnitPrice - prod.salePrice;
+          if (diff != 0) {
+            finalAdditionalAmount = diff;
+          }
+        }
+
         parsedList.add(
           CartItem(
             product: prod,
             quantity: qty,
             basketProductNo: bNo,
-            isSelected: true,
+            isSelected: refItem?.isSelected ?? true,
+            selectedOptions: finalOptions,
+            optionAdditionalAmount: finalAdditionalAmount,
           ),
         );
       }
@@ -412,9 +458,18 @@ class CartViewModel extends Notifier<List<CartItem>> {
   }
 
   /// 상품 추가 (로컬 상태 + 영구 저장소 + Cafe24 웹 세션 및 서버 DB 동시 반영)
-  Future<void> addProduct(Product product, {int quantity = 1}) async {
+  Future<void> addProduct(
+    Product product, {
+    int quantity = 1,
+    List<String> selectedOptions = const [],
+    int optionAdditionalAmount = 0,
+  }) async {
     _userInitiatedClear = false;
-    final index = state.indexWhere((item) => item.product.id == product.id);
+    final index = state.indexWhere(
+      (item) =>
+          item.product.id == product.id &&
+          listEquals(item.selectedOptions, selectedOptions),
+    );
     if (index >= 0) {
       final existing = state[index];
       state = [
@@ -430,7 +485,13 @@ class CartViewModel extends Notifier<List<CartItem>> {
     } else {
       state = [
         ...state,
-        CartItem(product: product, quantity: quantity, isSelected: true),
+        CartItem(
+          product: product,
+          quantity: quantity,
+          isSelected: true,
+          selectedOptions: selectedOptions,
+          optionAdditionalAmount: optionAdditionalAmount,
+        ),
       ];
     }
 
@@ -440,22 +501,10 @@ class CartViewModel extends Notifier<List<CartItem>> {
     final synced = await _webCartService.addItem(
       productNo: product.id,
       quantity: quantity,
+      selectedOptions: selectedOptions,
       expectedUser: _currentUser,
       password: pw,
     );
-
-    final memberId = _memberId;
-    if (memberId != null && memberId.isNotEmpty && _api.hasAdminCredentials) {
-      try {
-        await _api.addMemberCartItem(
-          memberId: memberId,
-          productNo: product.id,
-          quantity: quantity,
-        );
-      } catch (e) {
-        debugPrint('[CartViewModel] addMemberCartItem 오류: $e');
-      }
-    }
 
     if (synced) {
       await refreshFromCafe24();

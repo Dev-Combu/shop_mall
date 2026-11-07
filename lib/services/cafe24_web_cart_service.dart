@@ -76,7 +76,8 @@ class Cafe24WebCartService {
       _controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setOnJavaScriptAlertDialog((request) async {
-          debugPrint('[Cafe24WebCartService Alert] ${request.message}');
+          final alertUrl = await _controller?.currentUrl();
+          debugPrint('[Cafe24WebCartService Alert] ${request.message} (url: $alertUrl)');
         })
         ..setOnJavaScriptConfirmDialog((request) async => true)
         ..setNavigationDelegate(
@@ -105,7 +106,12 @@ class Cafe24WebCartService {
               }
             },
             onWebResourceError: (error) {
-              debugPrint('[Cafe24WebCartService] 웹뷰 리소스 오류: ${error.description}');
+              // 새 loadRequest로 이전 로딩이 취소되는 경우(-999 등)나 하위 리소스 오류는 정상 동작이므로 무시
+              if (error.isForMainFrame == false || error.errorCode == -999) return;
+              debugPrint(
+                '[Cafe24WebCartService] 웹뷰 리소스 오류: code=${error.errorCode}, '
+                'type=${error.errorType}, desc=${error.description}, url=${error.url}',
+              );
             },
           ),
         );
@@ -487,6 +493,12 @@ class Cafe24WebCartService {
                   if (pTxt) price = parseInt(pTxt, 10) || 0;
                 }
 
+                var optText = '';
+                var optEl = row.querySelector('.option, [id*="option_str"], .product_option');
+                if (optEl) {
+                  optText = (optEl.innerText || optEl.textContent || '').trim();
+                }
+
                 if (!seenPnos[pNo]) {
                   seenPnos[pNo] = true;
                   arr.push({
@@ -494,7 +506,8 @@ class Cafe24WebCartService {
                     product_name: pName,
                     quantity: qty,
                     basket_prd_no: bNo,
-                    product_sum_price: price
+                    product_sum_price: price,
+                    option_str: optText
                   });
                 }
               } catch (_) {}
@@ -553,6 +566,11 @@ class Cafe24WebCartService {
                           '0',
                     ) ??
                     0,
+                'option_str': (it['option_str'] ??
+                        it['opt_str'] ??
+                        it['sOptionStr'] ??
+                        '')
+                    .toString(),
               });
             }
           }
@@ -588,6 +606,7 @@ class Cafe24WebCartService {
   Future<bool> addItem({
     required String productNo,
     required int quantity,
+    List<String> selectedOptions = const [],
     User? expectedUser,
     String? password,
   }) {
@@ -621,20 +640,100 @@ class Cafe24WebCartService {
               window.alert = function() {};
               window.confirm = function() { return false; };
 
-              // 1. 필수 옵션 자동 선택 (비활성/구분선 제외한 첫 번째 유효 옵션)
-              var selects = document.querySelectorAll('select[option_product_no], select.ProductOption0, select[name^="option"]');
-              selects.forEach(function(sel) {
-                if (sel.options && sel.options.length > 0) {
-                  for (var k = 0; k < sel.options.length; k++) {
-                    var opt = sel.options[k];
-                    if (!opt.disabled && opt.value && opt.value !== '*' && opt.value !== '**') {
-                      sel.selectedIndex = k;
-                      sel.dispatchEvent(new Event('change', { bubbles: true }));
-                      break;
+              var rawOptions = ${jsonEncode(selectedOptions)};
+              var mainOptions = [];
+              var addOptions = [];
+
+              if (Array.isArray(rawOptions)) {
+                for (var i = 0; i < rawOptions.length; i++) {
+                  var oStr = rawOptions[i];
+                  if (typeof oStr === 'string') {
+                    if (oStr.indexOf('[추가]') !== -1) {
+                      addOptions.push(oStr);
+                    } else {
+                      mainOptions.push(oStr);
                     }
                   }
                 }
+              }
+
+              function clean(s) {
+                if (!s) return '';
+                s = s.replace(/\[추가\]/g, '').replace(/\[필수\]/g, '');
+                if (s.indexOf(':') !== -1) {
+                  s = s.substring(s.indexOf(':') + 1);
+                }
+                s = s.replace(/\([^)]*원[^)]*\)/g, '');
+                return s.replace(/\s+/g, '').replace(/[-_/]/g, '').trim().toLowerCase();
+              }
+
+              function matchOption(sel, targets) {
+                if (!sel.options || sel.options.length <= 1) return false;
+                for (var k = 0; k < sel.options.length; k++) {
+                  var opt = sel.options[k];
+                  if (opt.disabled || !opt.value || opt.value === '*' || opt.value === '**') continue;
+                  var optCore = clean(opt.text || '');
+                  if (!optCore) continue;
+                  for (var t = 0; t < targets.length; t++) {
+                    var targetCore = clean(targets[t]);
+                    if (!targetCore) continue;
+                    if (optCore === targetCore ||
+                        (optCore.length >= 2 && targetCore.length >= 2 &&
+                         (optCore.indexOf(targetCore) !== -1 || targetCore.indexOf(optCore) !== -1))) {
+                      sel.selectedIndex = k;
+                      sel.dispatchEvent(new Event('change', { bubbles: true }));
+                      return true;
+                    }
+                  }
+                }
+                return false;
+              }
+
+              var allSelects = document.querySelectorAll('select[option_product_no], select.ProductOption0, select[name^="option"], select[name*="add_option"], select[id*="add_option"]');
+              var mainSelects = [];
+              var addSelects = [];
+
+              allSelects.forEach(function(sel) {
+                var isAdd = (sel.name && sel.name.indexOf('add_option') !== -1) ||
+                            (sel.id && sel.id.indexOf('add_option') !== -1) ||
+                            (sel.className && sel.className.indexOf('add_option') !== -1);
+                if (isAdd) {
+                  addSelects.push(sel);
+                } else {
+                  mainSelects.push(sel);
+                }
               });
+
+              // 1. 본품 옵션 선택
+              if (mainOptions.length > 0) {
+                mainSelects.forEach(function(sel) {
+                  matchOption(sel, mainOptions);
+                });
+              } else {
+                // 본품 옵션 정보가 없는 경우: 첫 번째 유효 옵션 선택
+                mainSelects.forEach(function(sel) {
+                  var currentVal = sel.value;
+                  if (!currentVal || currentVal === '*' || currentVal === '**') {
+                    for (var k = 0; k < sel.options.length; k++) {
+                      var opt = sel.options[k];
+                      if (!opt.disabled && opt.value && opt.value !== '*' && opt.value !== '**') {
+                        sel.selectedIndex = k;
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                        break;
+                      }
+                    }
+                  }
+                });
+              }
+
+              // 2. 추가 상품 옵션 선택 (사용자가 추가옵션을 직접 선택했을 때만!)
+              if (addOptions.length > 0 && addSelects.length > 0) {
+                setTimeout(function() {
+                  addSelects.forEach(function(sel) {
+                    matchOption(sel, addOptions);
+                  });
+                }, 100);
+              }
 
               // 2. 옵션 박스 생성 직후 수량 반영 및 장바구니 제출
               var targetQty = $quantity;

@@ -28,6 +28,11 @@ class _HomeState extends ConsumerState<Home> {
       subtitle: '욕실 · 현관 · 수영장 · 사업장 미끄럼 방지',
       bgColor: const Color(0xFF0F172A),
       icon: Icons.shield_outlined,
+      onTap: (ctx) {
+        ctx.push(
+          '/category/products?name=${Uri.encodeComponent('현관발매트')}',
+        );
+      },
     ),
     _BannerItem(
       tag: '기업 · 관공서 특판',
@@ -35,6 +40,11 @@ class _HomeState extends ConsumerState<Home> {
       subtitle: '파이텍스, 파단매트, 야자매트 도매 직공급',
       bgColor: const Color(0xFF1E293B),
       icon: Icons.domain_rounded,
+      onTap: (ctx) {
+        ctx.push(
+          '/web?title=${Uri.encodeQueryComponent('대량 주문 및 견적 문의')}&path=${Uri.encodeQueryComponent('/board/consult/list.html')}',
+        );
+      },
     ),
     _BannerItem(
       tag: '공장 직영 출고',
@@ -42,6 +52,11 @@ class _HomeState extends ConsumerState<Home> {
       subtitle: '친환경 무독성 인증 · 당일 퀵/화물 배송',
       bgColor: const Color(0xFF1E3A5F),
       icon: Icons.grass_rounded,
+      onTap: (ctx) {
+        ctx.push(
+          '/category/products?name=${Uri.encodeComponent('롤매트')}',
+        );
+      },
     ),
   ];
 
@@ -179,92 +194,95 @@ class _HomeState extends ConsumerState<Home> {
                   color: banner.bgColor,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                banner.tag,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => banner.onTap?.call(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    banner.tag,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              banner.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                height: 1.35,
-                                letterSpacing: -0.4,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              banner.subtitle,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                fontSize: 11.5,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 14),
-                            GestureDetector(
-                              onTap: () {
-                                ref.read(bottomNavProvider.notifier).setIndex(BottomNavIndex.category);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(18),
+                                const SizedBox(height: 10),
+                                Text(
+                                  banner.title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.35,
+                                    letterSpacing: -0.4,
+                                  ),
                                 ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '바로가기',
-                                      style: TextStyle(
-                                        color: AppTheme.primary,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.bold,
+                                const SizedBox(height: 6),
+                                Text(
+                                  banner.subtitle,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 11.5,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 14),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '바로가기',
+                                        style: TextStyle(
+                                          color: AppTheme.primary,
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    ),
-                                    SizedBox(width: 4),
-                                    Icon(
-                                      Icons.chevron_right_rounded,
-                                      size: 14,
-                                      color: AppTheme.primary,
-                                    ),
-                                  ],
+                                      SizedBox(width: 4),
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: 14,
+                                        color: AppTheme.primary,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                          Icon(
+                            banner.icon,
+                            size: 72,
+                            color: Colors.white.withValues(alpha: 0.18),
+                          ),
+                        ],
                       ),
-                      Icon(
-                        banner.icon,
-                        size: 72,
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               );
@@ -569,64 +587,78 @@ class _HomeState extends ConsumerState<Home> {
   Widget _buildEventBanner() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppTheme.primary,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.inventory_2_outlined,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            context.push(
+              '/web?title=${Uri.encodeQueryComponent('대량구매 견적 문의')}&path=${Uri.encodeQueryComponent('/board/consult/list.html')}',
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'EVENT',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.point,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    SizedBox(width: 6),
-                    Text(
-                      '사업자 · 대량구매 특별 견적',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                  ],
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.inventory_2_outlined,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                 ),
-                SizedBox(height: 3),
-                Text(
-                  '행사장 · 시공업체 대량 발주 시 도매가 및 세금계산서 지원',
-                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'EVENT',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.point,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            '사업자 · 대량구매 특별 견적',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        '행사장 · 시공업체 대량 발주 시 도매가 및 세금계산서 지원',
+                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
                 ),
+                const Icon(Icons.chevron_right, size: 20, color: Color(0xFF94A3B8)),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 20, color: Color(0xFF94A3B8)),
-        ],
+        ),
       ),
     );
   }
@@ -915,6 +947,7 @@ class _BannerItem {
   final String subtitle;
   final Color bgColor;
   final IconData icon;
+  final void Function(BuildContext context)? onTap;
 
   _BannerItem({
     required this.tag,
@@ -922,6 +955,7 @@ class _BannerItem {
     required this.subtitle,
     required this.bgColor,
     required this.icon,
+    this.onTap,
   });
 }
 

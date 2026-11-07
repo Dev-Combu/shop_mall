@@ -12,9 +12,16 @@ Future<void> addProductToCartWithModal(
   WidgetRef ref,
   Product product, {
   int quantity = 1,
+  List<String> selectedOptions = const [],
+  int optionAdditionalAmount = 0,
 }) async {
   // 1. 장바구니 상태에 상품 추가
-  ref.read(cartProvider.notifier).addProduct(product, quantity: quantity);
+  ref.read(cartProvider.notifier).addProduct(
+        product,
+        quantity: quantity,
+        selectedOptions: selectedOptions,
+        optionAdditionalAmount: optionAdditionalAmount,
+      );
 
   if (!context.mounted) return;
 

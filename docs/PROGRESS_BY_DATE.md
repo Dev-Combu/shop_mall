@@ -15,6 +15,7 @@
 | **2026-10-16** | 카테고리 탭 대·중분류 실시간 연동 및 OAuth 토큰 자동 리프레시(`FlutterSecureStorage`) 구현 | [2026-10-16_oauth_auto_refresh_and_category_sync.md](./2026-10-16_oauth_auto_refresh_and_category_sync.md) |
 | **2026-10-16 ~ 10-17** | Cafe24 일반 Auth 전체 구축: 회원가입·로그인(`AuthSSL`), 회원 정보 확인(휴대폰 번호 복호화 폴링), 회원탈퇴 | [2026-10-16_cafe24_auth_and_profile_integration.md](./2026-10-16_cafe24_auth_and_profile_integration.md) |
 | **2026-11-02** | `feat/order`: 장바구니 실시간 동기화 & 꼬임 방지, Cafe24 공식 주문서 자동 채움 및 PG 결제 웹뷰 연동, 결제창 이탈 방지 가드, 주문 내역 및 배송 추적 | [2026-11-02_feat_order_and_checkout_integration.md](./2026-11-02_feat_order_and_checkout_integration.md) |
+| **2026-11-04 ~ 11-07** | **Cafe24 상품 옵션 시스템 전면 구축 & 장바구니·주문서 결제 연동 안정화**: Front API 필수/추가 옵션 드롭다운, 음수 차감액(-26,400원) 단가 정밀 동기화, 옵션 증발/중복 방지, WebKit JS 정규식 오류 및 "이동 불가" 오류 해결, 주문서 상품 썸네일 이미지 복원 | [2026-11-07_cafe24_options_cart_and_checkout_optimization.md](./2026-11-07_cafe24_options_cart_and_checkout_optimization.md) |
 
 ---
 
@@ -114,6 +115,31 @@
   - 카드사 앱카드, 간편결제(카카오페이/토스/ISP 등), Android `intent://` 외부 앱 호출 및 OS 권한(`AndroidManifest.xml`, `Info.plist`) 보강.
 - **주문 내역 관리 및 실시간 배송 추적 ([`OrdersPage`](../lib/views/orders.dart) & [`DeliveryTrackingSheet`](../lib/views/share/delivery_tracking_sheet.dart))**:
   - Cafe24 Admin API 연동 실시간 주문 목록/상세 조회, 결제 완료 주문번호 영구 기록, 택배사 공식 실시간 배송조회 바텀 시트 구현.
+
+---
+
+## 8. 2026-11-04 ~ 2026-11-07: Cafe24 상품 옵션 시스템 전면 구축 & 장바구니·주문서 결제 연동 안정화
+> 상세 내역: [`docs/2026-11-07_cafe24_options_cart_and_checkout_optimization.md`](./2026-11-07_cafe24_options_cart_and_checkout_optimization.md)
+
+- **보안 아키텍처 개편 (Client Secret 배제 및 Front API 전용 전환)**:
+  - APK/IPA 디컴파일 시의 Client Secret 노출 위험을 원천 차단하기 위해 Admin API를 완전히 배제하고, Client ID + Front API Key 기반의 공개 Front API 클라이언트([`Cafe24ApiService`](../lib/services/cafe24_api_service.dart)) 전용 구조로 전환.
+  - 주문 내역 및 배송 추적은 로컬 보안 저장소(`FlutterSecureStorage`) 및 회원 WebKit 세션과 직접 연동하도록 안전하게 재설계.
+- **홈 화면 광고 배너 딥링크 라우팅 개선 ([`Home`](../lib/views/home.dart))**:
+  - 최상단 배너 클릭 시 단순 전체 카테고리 이동 대신, 각 광고/프로모션에 맞는 전용 화면(특정 상품 상세, 기획 카테고리)으로 다이렉트 이동하도록 연결.
+- **상품 옵션 시스템 전면 구축 ([`product_option.dart`](../lib/models/product_option.dart) & [`ProductPage`](../lib/views/product.dart))**:
+  - Front API (`GET /api/v2/products/{id}/options`)를 통해 필수 옵션(`requiredGroups`) 및 추가 상품 옵션(`additionalGroups`)을 로드.
+  - 필수 옵션(`[필수]`) 미선택 시 구매 차단 및 안내 스낵바 노출, 추가 옵션은 `'선택 안 함 (구매 안 함)'`을 기본값으로 제공하여 강제 구매 원천 방지.
+  - 옵션 선택에 따른 추가/차감 금액을 계산하여 하단 결제 예정 금액(`formattedTotal`)에 실시간 반영.
+- **장바구니 옵션 보존 및 음수 차감 단가 정밀 동기화 ([`CartViewModel`](../lib/viewmodels/cart_viewmodel.dart) & [`CartPage`](../lib/views/cart.dart))**:
+  - **음수 차감액(-26,400원) 단가 반영**: 원격 판매가(`raw['price']`)와 텍스트 내 `(-26,400)` 차감액을 계산하여, 장바구니 품목 카드 단가(`item.unitSalePrice`: 5,600원)와 총액이 Cafe24 주문서(5,600원)와 1원도 틀리지 않고 정확히 일치하도록 수정.
+  - **옵션 텍스트 정리**: 대괄호 중복(`[[옵션: ...]]`) 및 접두사를 정리하여 `옵션: 120x100cm당`, `옵션: 테두리엣지추가10cm (-26,400원)`처럼 깔끔하게 노출.
+  - **옵션 유실 방지**: 장바구니 새로고침 시 기존 로컬 품목과 1:1 매칭하여 옵션 정보가 초기화되지 않도록 영구 보존.
+- **웹뷰 결제 전환 오류 및 JS 구문 에러 해결 ([`Cafe24WebCartService`](../lib/services/cafe24_web_cart_service.dart) & [`Cafe24OrderWebViewPage`](../lib/views/cafe24_order_webview.dart))**:
+  - **WebKit 문법 오류 방어**: `clean` 헬퍼 함수 내 정규식의 `Range out of order in character class` 구문 에러를 분리 수정하여 `addItem` 실패 원천 차단.
+  - **"선택된 상품이 없습니다" 해결**: 체크박스 식별 셀렉터 개선 및 장바구니 전체 구매 시 노출된 공식 **"전체상품주문"**(`a.btnSubmit, [onclick*="Basket.orderAll"]`) 버튼을 직접 클릭 트리거.
+  - **"주문서로 이동할 수 없습니다" 해결**: 원격 장바구니가 비어있는 경우 상세페이지를 경유하여 자동 보충 후 주문서로 넘어가도록 방어하고, 안전 타임아웃 링크에 공식 파라미터(`orderform.html?basket_type=all_buy`) 적용.
+  - **주문서 내 상품 이미지/상품명 복원**: 외부 이동 차단용 CSS 중 `a[href*="/product/"] { display: none }`를 제거하고, 썸네일 이미지(`thumb img`)는 `visibility: visible !important; display: block;`로 표시를 보장하며 `pointer-events: none`으로 클릭 이동만 비활성화.
+
 
 
 

@@ -4,6 +4,14 @@ import 'package:go_router/go_router.dart';
 import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/user.dart';
 import 'package:shopmall/viewmodels/auth_viewmodel.dart';
+import 'package:shopmall/views/mypage/guest_order_lookup_sheet.dart';
+import 'package:shopmall/views/mypage/mall_web_page.dart';
+
+void _openWeb(BuildContext context, String title, String path) {
+  context.push(
+    '/web?title=${Uri.encodeQueryComponent(title)}&path=${Uri.encodeQueryComponent(path)}',
+  );
+}
 
 class MyPage extends ConsumerWidget {
   const MyPage({super.key});
@@ -101,7 +109,7 @@ class MyPage extends ConsumerWidget {
                 _SettingItem(
                   icon: Icons.history_outlined,
                   title: '취소/반품/교환 내역',
-                  onTap: () {},
+                  onTap: () => context.push('/orders-cancelled'),
                 ),
                 _SettingItem(
                   icon: Icons.location_on_outlined,
@@ -123,18 +131,18 @@ class MyPage extends ConsumerWidget {
                   icon: Icons.confirmation_number_outlined,
                   title: '쿠폰함',
                   trailingText: isLoggedIn ? '${user.coupons}장 보유' : null,
-                  onTap: () {},
+                  onTap: () => _openWeb(context, '쿠폰함', MallPages.coupon),
                 ),
                 _SettingItem(
                   icon: Icons.monetization_on_outlined,
                   title: '포인트 관리',
                   trailingText: isLoggedIn ? '${user.points}P' : null,
-                  onTap: () {},
+                  onTap: () => _openWeb(context, '포인트 관리', MallPages.mileage),
                 ),
                 _SettingItem(
                   icon: Icons.card_giftcard_outlined,
                   title: '진행 중인 이벤트',
-                  onTap: () {},
+                  onTap: () => _openWeb(context, '진행 중인 이벤트', MallPages.event),
                 ),
               ],
             ),
@@ -169,23 +177,23 @@ class MyPage extends ConsumerWidget {
                 _SettingItem(
                   icon: Icons.campaign_outlined,
                   title: '공지사항',
-                  onTap: () {},
+                  onTap: () => _openWeb(context, '공지사항', MallPages.notice),
                 ),
                 _SettingItem(
                   icon: Icons.help_outline,
                   title: '자주 묻는 질문 (FAQ)',
-                  onTap: () {},
+                  onTap: () => _openWeb(context, '자주 묻는 질문', MallPages.faq),
                 ),
                 _SettingItem(
                   icon: Icons.headset_mic_outlined,
                   title: '1:1 문의하기',
                   subtitle: '평일 09:00~17:00 (031-528-3266)',
-                  onTap: () {},
+                  onTap: () => _openWeb(context, '1:1 문의', MallPages.inquiry),
                 ),
                 _SettingItem(
                   icon: Icons.description_outlined,
                   title: '약관 및 개인정보 처리방침',
-                  onTap: () {},
+                  onTap: () => _showTermsSheet(context),
                 ),
               ],
             ),
@@ -294,11 +302,11 @@ class MyPage extends ConsumerWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildSummaryStatItem('주문내역', '${user.orders}건', Icons.shopping_bag_outlined),
+                _buildSummaryStatItem(context, '주문내역', '${user.orders}건', Icons.shopping_bag_outlined, () => context.push('/orders')),
                 _buildVerticalDivider(),
-                _buildSummaryStatItem('쿠폰', '${user.coupons}장', Icons.confirmation_number_outlined),
+                _buildSummaryStatItem(context, '쿠폰', '${user.coupons}장', Icons.confirmation_number_outlined, () => _openWeb(context, '쿠폰함', MallPages.coupon)),
                 _buildVerticalDivider(),
-                _buildSummaryStatItem('포인트', '${user.points}P', Icons.monetization_on_outlined),
+                _buildSummaryStatItem(context, '포인트', '${user.points}P', Icons.monetization_on_outlined, () => _openWeb(context, '포인트 관리', MallPages.mileage)),
               ],
             ),
           ),
@@ -383,7 +391,7 @@ class MyPage extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           TextButton(
-            onPressed: () {},
+            onPressed: () => GuestOrderLookupSheet.show(context),
             child: const Text(
               '비회원 주문 조회',
               style: TextStyle(
@@ -406,9 +414,10 @@ class MyPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildSummaryStatItem(String label, String value, IconData icon) {
+  Widget _buildSummaryStatItem(BuildContext context, String label,
+      String value, IconData icon, VoidCallback onTap) {
     return InkWell(
-      onTap: () {},
+      onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -445,10 +454,22 @@ class MyPage extends ConsumerWidget {
 
   Widget _buildQuickMenuGrid(BuildContext context) {
     final menus = [
-      _QuickMenuItem(icon: Icons.favorite_border, label: '찜한 상품'),
-      _QuickMenuItem(icon: Icons.history, label: '최근 본 상품'),
-      _QuickMenuItem(icon: Icons.rate_review_outlined, label: '상품 후기'),
-      _QuickMenuItem(icon: Icons.support_agent, label: '1:1 문의'),
+      _QuickMenuItem(
+          icon: Icons.favorite_border,
+          label: '찜한 상품',
+          onTap: () => context.push('/favorites')),
+      _QuickMenuItem(
+          icon: Icons.history,
+          label: '최근 본 상품',
+          onTap: () => context.push('/recent')),
+      _QuickMenuItem(
+          icon: Icons.rate_review_outlined,
+          label: '상품 후기',
+          onTap: () => _openWeb(context, '상품 후기', MallPages.review)),
+      _QuickMenuItem(
+          icon: Icons.support_agent,
+          label: '1:1 문의',
+          onTap: () => _openWeb(context, '1:1 문의', MallPages.inquiry)),
     ];
 
     return Container(
@@ -462,7 +483,7 @@ class MyPage extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: menus.map((menu) {
           return InkWell(
-            onTap: () {},
+            onTap: menu.onTap,
             borderRadius: BorderRadius.circular(8),
             child: Column(
               children: [
@@ -634,6 +655,39 @@ class MyPage extends ConsumerWidget {
     );
   }
 
+  void _showTermsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('이용약관'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _openWeb(context, '이용약관', MallPages.terms);
+              },
+            ),
+            ListTile(
+              title: const Text('개인정보 처리방침'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _openWeb(context, '개인정보 처리방침', MallPages.privacy);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showLogoutDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
@@ -711,6 +765,8 @@ class _SettingItem {
 class _QuickMenuItem {
   final IconData icon;
   final String label;
+  final VoidCallback onTap;
 
-  _QuickMenuItem({required this.icon, required this.label});
+  _QuickMenuItem(
+      {required this.icon, required this.label, required this.onTap});
 }

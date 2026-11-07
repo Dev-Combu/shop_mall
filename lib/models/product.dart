@@ -12,6 +12,7 @@ class Product {
   final IconData icon;     // 이미지 플레이스홀더용 아이콘
   final String? imageUrl;  // 상품 대표 이미지 URL
   final String description;
+  final String detailHtml; // 상품 상세설명 HTML (Cafe24 `description`)
   final double rating;     // 1.0 ~ 5.0
   final int reviewCount;
   final List<int> categoryNos; // Cafe24 소속 카테고리 번호 목록
@@ -33,6 +34,7 @@ class Product {
     this.icon = Icons.inventory_2_outlined,
     this.imageUrl,
     this.description = '',
+    this.detailHtml = '',
     this.rating = 4.5,
     this.reviewCount = 0,
     this.categoryNos = const [],
@@ -182,6 +184,7 @@ class Product {
       description: json['summary_description']?.toString() ??
           json['simple_description']?.toString() ??
           '',
+      detailHtml: json['description']?.toString() ?? '',
       rating: 4.8,
       reviewCount: 50,
       categoryNos: categoryNos,
@@ -239,6 +242,7 @@ class Product {
         'category': category,
         'imageUrl': imageUrl,
         'description': description,
+        'detailHtml': detailHtml,
         'rating': rating,
         'reviewCount': reviewCount,
         'categoryNos': categoryNos,
@@ -260,6 +264,7 @@ class Product {
       icon: _matchProductIcon(catName),
       imageUrl: _sanitizeImageUrl(json['imageUrl']?.toString()),
       description: json['description']?.toString() ?? '',
+      detailHtml: json['detailHtml']?.toString() ?? '',
       rating: double.tryParse(json['rating']?.toString() ?? '4.5') ?? 4.5,
       reviewCount: int.tryParse(json['reviewCount']?.toString() ?? '0') ?? 0,
       categoryNos: (json['categoryNos'] is List)

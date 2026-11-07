@@ -5,11 +5,14 @@ import 'package:shopmall/config/theme/theme.dart';
 import 'package:shopmall/models/cart_item.dart';
 import 'package:shopmall/models/order.dart';
 import 'package:shopmall/models/product.dart';
+import 'package:shopmall/models/product_option.dart';
 import 'package:shopmall/services/cafe24_api_service.dart';
 import 'package:shopmall/services/product_data.dart';
 import 'package:shopmall/viewmodels/bottom_nav_viewmodel.dart';
 import 'package:shopmall/viewmodels/cart_viewmodel.dart';
+import 'package:shopmall/viewmodels/saved_products_viewmodel.dart';
 import 'package:shopmall/views/share/cart_added_modal.dart';
+import 'package:shopmall/views/share/product_detail_html_view.dart';
 import 'package:shopmall/views/share/cafe24_checkout_launcher.dart';
 
 /// 상품 상세 & 구매 페이지
@@ -34,9 +37,15 @@ class _ProductPageState extends ConsumerState<ProductPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _quantity = 1;
-  bool _isFavorite = false;
   bool _isLoading = false;
+  bool _detailLoaded = false; // 상세설명 조회 완료 여부
   List<_ReviewData> _liveReviews = [];
+
+  // 상품 옵션 데이터 및 선택 상태
+  ProductOptionsData? _optionsData;
+  bool _loadingOptions = true;
+  final Map<String, ProductOptionValue> _selectedRequiredOptions = {};
+  final Map<String, ProductOptionValue> _selectedAdditionalOptions = {};
 
   // 상품 데이터 (전달받은 데이터 또는 ID로 조회)
   Product? _product;
@@ -56,8 +65,81 @@ class _ProductPageState extends ConsumerState<ProductPage>
     _product = widget.initialProduct ?? ProductDataService.findById(widget.productId);
     if (_product == null) {
       _fetchProductDetail();
+    } else if (_product!.detailHtml.trim().isEmpty) {
+      _fetchDetailHtml();
+    } else {
+      _detailLoaded = true;
     }
     _fetchReviews();
+    _fetchOptions();
+    _recordRecentView();
+  }
+
+  Future<void> _fetchOptions() async {
+    try {
+      final apiService = ref.read(cafe24ApiServiceProvider);
+      final opt = await apiService.fetchProductOptions(widget.productId);
+      if (mounted) {
+        setState(() {
+          _optionsData = opt;
+          _loadingOptions = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingOptions = false);
+    }
+  }
+
+  int get _totalOptionAdditionalAmount {
+    int sum = 0;
+    for (final opt in _selectedRequiredOptions.values) {
+      sum += opt.additionalAmount;
+    }
+    for (final opt in _selectedAdditionalOptions.values) {
+      sum += opt.additionalAmount;
+    }
+    return sum;
+  }
+
+  int get _effectiveUnitSalePrice =>
+      (_product?.salePrice ?? 0) + _totalOptionAdditionalAmount;
+
+  List<String> get _selectedOptionsTextList {
+    final list = <String>[];
+    for (final entry in _selectedRequiredOptions.entries) {
+      list.add('${entry.key}: ${entry.value.text}');
+    }
+    for (final entry in _selectedAdditionalOptions.entries) {
+      list.add('[추가] ${entry.key}: ${entry.value.text}');
+    }
+    return list;
+  }
+
+  bool _validateRequiredOptions() {
+    if (_optionsData != null && _optionsData!.requiredGroups.isNotEmpty) {
+      for (final group in _optionsData!.requiredGroups) {
+        if (group.isRequired && !_selectedRequiredOptions.containsKey(group.name)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('[필수] ${group.name} 옵션을 선택해주세요.'),
+              backgroundColor: AppTheme.point,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /// 최근 본 상품에 기록 (빌드 이후 시점에 provider 갱신)
+  void _recordRecentView() {
+    Future.microtask(() {
+      final p = _product;
+      if (!mounted || p == null) return;
+      ref.read(recentProvider.notifier).record(p);
+    });
   }
 
   Future<void> _fetchReviews() async {
@@ -84,13 +166,15 @@ class _ProductPageState extends ConsumerState<ProductPage>
   Future<void> _fetchProductDetail() async {
     setState(() => _isLoading = true);
     try {
-      final apiService = Cafe24ApiService();
+      final apiService = ref.read(cafe24ApiServiceProvider);
       final p = await apiService.fetchProductDetail(widget.productId);
       if (p != null && mounted) {
         setState(() {
           _product = p;
           _isLoading = false;
+          _detailLoaded = true;
         });
+        _recordRecentView();
         return;
       }
     } catch (e) {
@@ -99,6 +183,43 @@ class _ProductPageState extends ConsumerState<ProductPage>
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  /// 목록에서 전달받은 상품에 상세설명(HTML)이 없을 때 단건 조회로 보강
+  Future<void> _fetchDetailHtml() async {
+    try {
+      final apiService = ref.read(cafe24ApiServiceProvider);
+      final p = await apiService.fetchProductDetail(widget.productId);
+      if (p != null && mounted) {
+        final current = _product!;
+        setState(() {
+          _product = Product(
+            id: current.id,
+            name: current.name,
+            originalPrice: current.originalPrice,
+            discountRate: current.discountRate,
+            tag: current.tag,
+            tagColor: current.tagColor,
+            category: current.category,
+            icon: current.icon,
+            imageUrl: current.imageUrl ?? p.imageUrl,
+            description: current.description.isNotEmpty ? current.description : p.description,
+            detailHtml: p.detailHtml,
+            rating: current.rating,
+            reviewCount: current.reviewCount,
+            categoryNos: current.categoryNos,
+            isNew: current.isNew,
+            isRecommend: current.isRecommend,
+            createdDate: current.createdDate,
+          );
+          _detailLoaded = true;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('[ProductPage] fetchDetailHtml error: $e');
+    }
+    if (mounted) setState(() => _detailLoaded = true);
   }
 
   @override
@@ -149,7 +270,8 @@ class _ProductPageState extends ConsumerState<ProductPage>
 
     final product = _product!;
     final hasDiscount = product.discountRate > 0;
-    final formattedTotal = product.formattedTotalPrice(_quantity);
+    final totalAmount = _effectiveUnitSalePrice * _quantity;
+    final formattedTotal = '${_formatPrice(totalAmount)}원';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -238,6 +360,14 @@ class _ProductPageState extends ConsumerState<ProductPage>
                   child: Divider(height: 8, thickness: 8, color: Color(0xFFF5F5F5)),
                 ),
 
+                // ── 옵션 선택 ──
+                SliverToBoxAdapter(child: _buildOptionsSection(product)),
+
+                // ── 구분선 ──
+                const SliverToBoxAdapter(
+                  child: Divider(height: 8, thickness: 8, color: Color(0xFFF5F5F5)),
+                ),
+
                 // ── 수량 선택 ──
                 SliverToBoxAdapter(child: _buildQuantitySection()),
 
@@ -261,6 +391,7 @@ class _ProductPageState extends ConsumerState<ProductPage>
 
   // ─── 이미지 영역 ───
   Widget _buildImageSection(Product product) {
+    final isFavorite = ref.watch(favoritesProvider).any((p) => p.id == product.id);
     final hasImage = product.imageUrl != null && product.imageUrl!.trim().isNotEmpty;
 
     return Stack(
@@ -323,7 +454,7 @@ class _ProductPageState extends ConsumerState<ProductPage>
           top: 12,
           right: 12,
           child: GestureDetector(
-            onTap: () => setState(() => _isFavorite = !_isFavorite),
+            onTap: () => ref.read(favoritesProvider.notifier).toggle(product),
             child: Container(
               width: 40,
               height: 40,
@@ -339,8 +470,8 @@ class _ProductPageState extends ConsumerState<ProductPage>
                 ],
               ),
               child: Icon(
-                _isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: _isFavorite ? _red : _textGray,
+                isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: isFavorite ? _red : _textGray,
                 size: 20,
               ),
             ),
@@ -487,6 +618,334 @@ class _ProductPageState extends ConsumerState<ProductPage>
     );
   }
 
+  static String _formatPrice(int n) {
+    final s = n.toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(s[i]);
+    }
+    return buffer.toString();
+  }
+
+  // ─── 옵션 선택 섹션 ───
+  Widget _buildOptionsSection(Product product) {
+    if (_loadingOptions) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 10),
+            Text('옵션 정보를 불러오는 중입니다...', style: TextStyle(fontSize: 13, color: _textGray)),
+          ],
+        ),
+      );
+    }
+
+    final data = _optionsData;
+    if (data == null || (data.requiredGroups.isEmpty && data.additionalGroups.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '옵션 선택',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _textDark),
+              ),
+              const SizedBox(width: 6),
+              if (data.requiredGroups.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.point.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '필수선택',
+                    style: TextStyle(fontSize: 11, color: AppTheme.point, fontWeight: FontWeight.w600),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 1. 본품 옵션 그룹
+          ...data.requiredGroups.map((group) {
+            final selected = _selectedRequiredOptions[group.name];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        group.name,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textDark),
+                      ),
+                      const SizedBox(width: 4),
+                      if (group.isRequired)
+                        const Text('*', style: TextStyle(color: AppTheme.point, fontWeight: FontWeight.bold))
+                      else
+                        const Text('(선택)', style: TextStyle(color: _textGray, fontSize: 11)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<ProductOptionValue?>(
+                    value: selected,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      hintText: group.isRequired
+                          ? '${group.name} 선택 (필수)'
+                          : '${group.name} (선택 안 함)',
+                      hintStyle: const TextStyle(fontSize: 13, color: _textGray),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: selected != null ? AppTheme.primary : const Color(0xFFE0E0E0),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+                      ),
+                    ),
+                    items: [
+                      if (!group.isRequired)
+                        const DropdownMenuItem<ProductOptionValue?>(
+                          value: null,
+                          child: Text(
+                            '선택 안 함',
+                            style: TextStyle(fontSize: 13, color: _textGray),
+                          ),
+                        ),
+                      ...group.values.map((v) {
+                        return DropdownMenuItem<ProductOptionValue?>(
+                          value: v,
+                          child: Text(
+                            '${v.text}${v.formattedAdditionalAmount}',
+                            style: const TextStyle(fontSize: 13, color: _textDark),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }),
+                    ],
+                    onChanged: (val) {
+                      setState(() {
+                        if (val != null) {
+                          _selectedRequiredOptions[group.name] = val;
+                        } else {
+                          _selectedRequiredOptions.remove(group.name);
+                        }
+                      });
+                    },
+                  ),
+                ],
+              ),
+            );
+          }),
+
+          // 2. 추가 상품 옵션 그룹
+          if (data.additionalGroups.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Text(
+                  '추가 상품 선택',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _textDark),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '선택사항',
+                    style: TextStyle(fontSize: 11, color: _textGray, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...data.additionalGroups.map((group) {
+              final selected = _selectedAdditionalOptions[group.name];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.name,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textDark),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<ProductOptionValue?>(
+                      value: selected,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        hintText: '${group.name} (선택 안 함)',
+                        hintStyle: const TextStyle(fontSize: 13, color: _textGray),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(
+                            color: selected != null ? AppTheme.primary : const Color(0xFFE0E0E0),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+                        ),
+                      ),
+                      items: [
+                        const DropdownMenuItem<ProductOptionValue?>(
+                          value: null,
+                          child: Text(
+                            '선택 안 함 (구매 안 함)',
+                            style: TextStyle(fontSize: 13, color: _textGray),
+                          ),
+                        ),
+                        ...group.values.map((v) {
+                          return DropdownMenuItem<ProductOptionValue?>(
+                            value: v,
+                            child: Text(
+                              '${v.text}${v.formattedAdditionalAmount}',
+                              style: const TextStyle(fontSize: 13, color: _textDark),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == null) {
+                            _selectedAdditionalOptions.remove(group.name);
+                          } else {
+                            _selectedAdditionalOptions[group.name] = val;
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+
+          // 3. 선택된 옵션 요약 카드
+          if (_selectedRequiredOptions.isNotEmpty || _selectedAdditionalOptions.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '선택된 옵션 내역',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _textDark),
+                  ),
+                  const SizedBox(height: 6),
+                  ..._selectedRequiredOptions.entries.map((e) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Text(
+                              '[필수] ${e.key}: ',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _textDark),
+                            ),
+                            Expanded(
+                              child: Text(
+                                '${e.value.text}${e.value.formattedAdditionalAmount}',
+                                style: const TextStyle(fontSize: 12, color: _textDark),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                  ..._selectedAdditionalOptions.entries.map((e) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Text(
+                              '[추가] ${e.key}: ',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary),
+                            ),
+                            Expanded(
+                              child: Text(
+                                '${e.value.text}${e.value.formattedAdditionalAmount}',
+                                style: const TextStyle(fontSize: 12, color: _textDark),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _selectedAdditionalOptions.remove(e.key);
+                                });
+                              },
+                              child: const Icon(Icons.close, size: 16, color: _textGray),
+                            ),
+                          ],
+                        ),
+                      )),
+                  if (_totalOptionAdditionalAmount > 0) ...[
+                    const Divider(height: 12, color: Color(0xFFE5E7EB)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '옵션 추가금액 (개당)',
+                          style: TextStyle(fontSize: 12, color: _textGray),
+                        ),
+                        Text(
+                          '+${_formatPrice(_totalOptionAdditionalAmount)}원',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.point),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ─── 수량 선택 ───
   Widget _buildQuantitySection() {
     return Padding(
@@ -543,77 +1002,47 @@ class _ProductPageState extends ConsumerState<ProductPage>
             Tab(text: '리뷰'),
           ],
         ),
-        // 탭 내용 (고정 높이 — SliverList 안에서 NeverScrollable 사용)
-        SizedBox(
-          height: 320,
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              // ── 상세정보 탭 ──
-              SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 상품 설명
-                    Text(
-                      product.description.trim().isNotEmpty
-                          ? product.description
-                          : '${product.name}의 상세 상품 정보입니다.\n수지씨앤엘 정품 보증 제품입니다.',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: _textDark,
-                        height: 1.7,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // 스펙 박스 (장식)
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF9FBE7),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFDCEDC8)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.verified_outlined, color: _darkGreen, size: 20),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              '품질 보증 | KC 인증 완료 제품',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: _darkGreen,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+        // 탭 내용 (상세정보 HTML은 높이가 가변이므로 선택된 탭만 렌더링)
+        ListenableBuilder(
+          listenable: _tabController,
+          builder: (context, _) {
+            if (_tabController.index == 0) return _buildDetailTab(product);
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _buildReviewSummary(product),
+                  const SizedBox(height: 16),
+                  ..._buildSampleReviews(),
+                ],
               ),
-
-              // ── 리뷰 탭 ──
-              SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // 리뷰 요약
-                    _buildReviewSummary(product),
-                    const SizedBox(height: 16),
-                    // 리뷰 샘플 목록
-                    ..._buildSampleReviews(),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
         const SizedBox(height: 16),
       ],
+    );
+  }
+
+  Widget _buildDetailTab(Product product) {
+    final html = product.detailHtml.trim();
+    if (html.isNotEmpty) {
+      return ProductDetailHtmlView(key: ValueKey(product.id), html: html);
+    }
+    if (!_detailLoaded) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        product.description.trim().isNotEmpty
+            ? product.description
+            : '등록된 상세 설명이 없습니다.',
+        style: const TextStyle(fontSize: 14, color: _textDark, height: 1.7),
+      ),
     );
   }
 
@@ -769,11 +1198,14 @@ class _ProductPageState extends ConsumerState<ProductPage>
             child: OutlinedButton(
               onPressed: () {
                 if (_product == null) return;
+                if (!_validateRequiredOptions()) return;
                 addProductToCartWithModal(
                   context,
                   ref,
                   _product!,
                   quantity: _quantity,
+                  selectedOptions: _selectedOptionsTextList,
+                  optionAdditionalAmount: _totalOptionAdditionalAmount,
                 );
               },
               style: OutlinedButton.styleFrom(
@@ -792,12 +1224,15 @@ class _ProductPageState extends ConsumerState<ProductPage>
             child: ElevatedButton(
               onPressed: () {
                 if (_product == null) return;
+                if (!_validateRequiredOptions()) return;
                 final checkoutArgs = CheckoutArgs(
                   items: [
                     CartItem(
                       product: _product!,
                       quantity: _quantity,
                       isSelected: true,
+                      selectedOptions: _selectedOptionsTextList,
+                      optionAdditionalAmount: _totalOptionAdditionalAmount,
                     ),
                   ],
                   fromCart: false,

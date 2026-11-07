@@ -9,6 +9,9 @@ import 'package:shopmall/views/checkout.dart';
 import 'package:shopmall/views/home.dart';
 import 'package:shopmall/views/login.dart';
 import 'package:shopmall/views/my_page.dart';
+import 'package:shopmall/views/mypage/cancel_orders_page.dart';
+import 'package:shopmall/views/mypage/mall_web_page.dart';
+import 'package:shopmall/views/mypage/saved_products_page.dart';
 import 'package:shopmall/views/order_detail.dart';
 import 'package:shopmall/views/orders.dart';
 import 'package:shopmall/views/product.dart';
@@ -135,6 +138,29 @@ final router = GoRouter(
         final orderId = state.pathParameters['id']!;
         return OrderDetailPage(orderId: orderId);
       },
+    ),
+    GoRoute(
+      path: '/orders-cancelled',
+      name: 'orders-cancelled',
+      builder: (context, state) => const CancelOrdersPage(),
+    ),
+    GoRoute(
+      path: '/favorites',
+      name: 'favorites',
+      builder: (context, state) => const FavoritesPage(),
+    ),
+    GoRoute(
+      path: '/recent',
+      name: 'recent',
+      builder: (context, state) => const RecentProductsPage(),
+    ),
+    GoRoute(
+      path: '/web',
+      name: 'mall-web',
+      builder: (context, state) => MallWebPage(
+        title: state.uri.queryParameters['title'] ?? '',
+        path: state.uri.queryParameters['path'] ?? '/',
+      ),
     ),
     GoRoute(
       path: '/login',
